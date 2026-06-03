@@ -52,26 +52,32 @@ if (!$msg && isset($_SESSION['7j_clr_msg'])) {
 }
 
 // ─── Auto-cleanup ────────────────────────────────────────────────────────────
-// กฎ: เกิน 60 วัน → ลบเสมอ
+// กฎ 1: เกิน 60 วัน → ลบเสมอ
 $connection2->query("DELETE FROM sevenj_class_completions WHERE created_at < DATE_SUB(NOW(), INTERVAL 60 DAY)");
-// กฎ: เกิน 30 วัน + เรียนครบแล้ว (completed >= total) → ลบ
-// ถ้ายังค้างอยู่ → คงไว้จนครบ 60 วัน
-$connection2->query("
-    DELETE c FROM sevenj_class_completions c
+
+// กฎ 2: เกิน 30 วัน + เรียนครบแล้ว → ลบ / ยังค้าง → คงไว้จนครบ 60 วัน
+// ใช้ PHP fetch IDs ก่อน เพื่อหลีกเลี่ยง MySQL self-reference ใน DELETE
+$old30 = $connection2->query("
+    SELECT c.id, c.student_id,
+        (SELECT COUNT(*) FROM sevenj_class_completions c2 WHERE c2.student_id = c.student_id) AS done_all,
+        COALESCE((SELECT MAX(sch.total_classes) FROM sevenj_schedule sch
+                  WHERE sch.student_id = c.student_id AND sch.status = 'active'), 0) AS total_pkg
+    FROM sevenj_class_completions c
     WHERE c.created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)
-    AND (
-        NOT EXISTS (
-            SELECT 1 FROM sevenj_schedule sch
-            WHERE sch.student_id = c.student_id AND sch.status = 'active'
-        )
-        OR (
-            (SELECT COUNT(*) FROM sevenj_class_completions c2 WHERE c2.student_id = c.student_id)
-            >= (SELECT COALESCE(MAX(sch2.total_classes), 0)
-                FROM sevenj_schedule sch2
-                WHERE sch2.student_id = c.student_id AND sch2.status = 'active')
-        )
-    )
-");
+")->fetchAll(PDO::FETCH_ASSOC);
+
+$idsToDelete = [];
+foreach ($old30 as $row) {
+    $hasRemaining = ($row['total_pkg'] > 0) && ((int)$row['done_all'] < (int)$row['total_pkg']);
+    if (!$hasRemaining) {
+        $idsToDelete[] = (int)$row['id'];
+    }
+}
+if ($idsToDelete) {
+    $ph = implode(',', array_fill(0, count($idsToDelete), '?'));
+    $connection2->prepare("DELETE FROM sevenj_class_completions WHERE id IN ($ph)")
+                ->execute($idsToDelete);
+}
 
 // ─── Filters ──────────────────────────────────────────────────────────────────
 $search   = trim($_GET['search']    ?? '');

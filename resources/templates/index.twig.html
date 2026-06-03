@@ -34,9 +34,21 @@ TODO: add template variable details.
             {% block header %}
                 <div id="header" class="relative flex justify-between items-center">
 
-                    <a id="header-logo" class="block my-4 max-w-xs sm:max-w-full leading-none" href="{{ absoluteURL }}">
-                        <img class="block max-w-full {{ isLoggedIn ? 'h-12' : 'h-20 mt-4 mb-4' }}" alt="{{ organisationName }} Logo" src="{{ absoluteURL }}/{{ organisationLogo|default("themes/Default/img/logo.png")|trim('/', 'left') }}" style="max-height:100px;" />
-                    </a>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <a id="header-logo" class="block my-4 max-w-xs sm:max-w-full leading-none" href="{{ absoluteURL }}">
+                            <img class="block max-w-full {{ isLoggedIn ? 'h-12' : 'h-20 mt-4 mb-4' }}" alt="{{ organisationName }} Logo" src="{{ absoluteURL }}/{{ organisationLogo|default("themes/Default/img/logo.png")|trim('/', 'left') }}" style="max-height:100px;" />
+                        </a>
+                        {% if not isLoggedIn %}
+                        <div style="line-height:1;user-select:none;">
+                            <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&display=swap" rel="stylesheet">
+                            <span style="font-family:'Caveat',cursive;font-size:2.6rem;font-weight:700;
+                                         background:linear-gradient(135deg,#fff 30%,#F5A623 100%);
+                                         -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+                                         filter:drop-shadow(0 2px 6px rgba(0,0,0,.35));
+                                         letter-spacing:2px;">V3.0.0</span>
+                        </div>
+                        {% endif %}
+                    </div>
 
                     <div class="flex-grow flex items-center justify-end text-right text-sm text-{{ themeColour }}-200">
 
