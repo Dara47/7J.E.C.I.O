@@ -36,36 +36,39 @@ collapsed drop-down list in 'mini' view-mode.
         {% endfor %}
     {% endif %}
 
-    {# ── 7J Portal Access Buttons (แสดงเฉพาะหน้า login — อยู่เหนือ login form) ── #}
+    {# ── 7J Portal Access Buttons ── #}
     {% if not isLoggedIn and sidebar %}
+    <style>
+    .portal-btn{display:flex;align-items:center;gap:14px;padding:15px 20px;border-radius:14px;
+        font-weight:700;color:#fff;text-decoration:none;transition:transform .18s,box-shadow .18s;position:relative;overflow:hidden;}
+    .portal-btn:hover{transform:translateY(-3px);}
+    .portal-btn-icon{font-size:2rem;flex-shrink:0;line-height:1;}
+    .portal-btn-text{text-align:left;}
+    .portal-btn-title{font-size:1rem;font-weight:800;letter-spacing:.02em;line-height:1.2;}
+    .portal-btn-sub{font-size:.72rem;font-weight:500;opacity:.82;margin-top:2px;letter-spacing:.03em;}
+    </style>
     <div class="{{ sidebarClass }} pb-5 pt-4">
-        <p style="font-size:.72rem;color:#9ca3af;text-align:center;margin:0 0 12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">
-            เข้าสู่ระบบสำหรับ
+        <p style="font-size:.7rem;color:#9ca3af;text-align:center;margin:0 0 10px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;">
+            🔐 เข้าสู่ระบบสำหรับ
         </p>
         <div style="display:flex;flex-direction:column;gap:10px;">
-            <a href="{{ absoluteURL }}/portal/student_login.php"
-               style="display:flex;align-items:center;justify-content:center;gap:12px;
-                      padding:18px 24px;border-radius:14px;font-weight:700;font-size:1.1rem;
-                      color:#fff;text-decoration:none;
-                      background:linear-gradient(135deg,#4c1d95,#7c3aed);
-                      box-shadow:0 6px 18px rgba(124,58,237,.5);
-                      transition:all .18s;letter-spacing:.02em;">
-                <svg width="26" height="26" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
-                </svg>
-                🎓 นักเรียน — Student Portal
+            <a href="{{ absoluteURL }}/portal/student_login.php" class="portal-btn"
+               style="background:linear-gradient(135deg,#4c1d95 0%,#7c3aed 100%);
+                      box-shadow:0 6px 20px rgba(124,58,237,.45);">
+                <span class="portal-btn-icon">🎓</span>
+                <span class="portal-btn-text">
+                    <div class="portal-btn-title">นักเรียน</div>
+                    <div class="portal-btn-sub">Student Portal — เข้าดูตารางเรียน &amp; ลิ้งก์</div>
+                </span>
             </a>
-            <a href="{{ absoluteURL }}/portal/teacher_login.php"
-               style="display:flex;align-items:center;justify-content:center;gap:12px;
-                      padding:18px 24px;border-radius:14px;font-weight:700;font-size:1.1rem;
-                      color:#fff;text-decoration:none;
-                      background:linear-gradient(135deg,#78350f,#d97706);
-                      box-shadow:0 6px 18px rgba(217,119,6,.5);
-                      transition:all .18s;letter-spacing:.02em;">
-                <svg width="26" height="26" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
-                </svg>
-                👨‍🏫 ครู — Teacher Portal
+            <a href="{{ absoluteURL }}/portal/teacher_login.php" class="portal-btn"
+               style="background:linear-gradient(135deg,#78350f 0%,#d97706 100%);
+                      box-shadow:0 6px 20px rgba(217,119,6,.45);">
+                <span class="portal-btn-icon">👨‍🏫</span>
+                <span class="portal-btn-text">
+                    <div class="portal-btn-title">ครู</div>
+                    <div class="portal-btn-sub">Teacher Portal — ดูตารางสอน &amp; นักเรียน</div>
+                </span>
             </a>
         </div>
     </div>

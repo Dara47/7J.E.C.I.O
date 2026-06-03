@@ -35,8 +35,8 @@ TODO: add template variable details.
                 <div id="header" class="relative flex justify-between items-center">
 
                     <div style="display:flex;align-items:center;gap:10px;">
-                        <a id="header-logo" class="block my-4 max-w-xs sm:max-w-full leading-none" href="{{ absoluteURL }}">
-                            <img class="block max-w-full {{ isLoggedIn ? 'h-12' : 'h-20 mt-4 mb-4' }}" alt="{{ organisationName }} Logo" src="{{ absoluteURL }}/{{ organisationLogo|default("themes/Default/img/logo.png")|trim('/', 'left') }}" style="max-height:100px;" />
+                        <a id="header-logo" class="block {{ isLoggedIn ? 'my-4' : 'my-1' }} max-w-xs sm:max-w-full leading-none" href="{{ absoluteURL }}">
+                            <img class="block max-w-full {{ isLoggedIn ? 'h-12' : 'h-16 mt-2 mb-1' }}" alt="{{ organisationName }} Logo" src="{{ absoluteURL }}/{{ organisationLogo|default("themes/Default/img/logo.png")|trim('/', 'left') }}" style="max-height:90px;" />
                         </a>
                         {% if not isLoggedIn %}
                         <div style="line-height:1;user-select:none;">
@@ -54,14 +54,22 @@ TODO: add template variable details.
 
                         {# Language Switcher #}
                         {% if lang starts with 'th' %}
-                            <a href="{{ absoluteURL }}/index.php?i18n=en_GB" title="English"
-                               class="mr-3 text-white text-2xl opacity-75 hover:opacity-100 transition-opacity" style="text-decoration:none;line-height:1;">
-                                🇬🇧
+                            <a href="{{ absoluteURL }}/index.php?i18n=en_GB" title="Switch to English"
+                               style="display:inline-flex;align-items:center;gap:6px;padding:5px 14px;
+                                      border-radius:20px;border:1.5px solid rgba(255,255,255,.5);
+                                      background:rgba(255,255,255,.12);color:#fff;font-size:.8rem;
+                                      font-weight:700;text-decoration:none;margin-right:10px;
+                                      backdrop-filter:blur(4px);letter-spacing:.05em;transition:background .2s;">
+                                🇬🇧 EN
                             </a>
                         {% else %}
-                            <a href="{{ absoluteURL }}/index.php?i18n=th_TH" title="ภาษาไทย"
-                               class="mr-3 text-white text-2xl opacity-75 hover:opacity-100 transition-opacity" style="text-decoration:none;line-height:1;">
-                                🇹🇭
+                            <a href="{{ absoluteURL }}/index.php?i18n=th_TH" title="เปลี่ยนเป็นภาษาไทย"
+                               style="display:inline-flex;align-items:center;gap:6px;padding:5px 14px;
+                                      border-radius:20px;border:1.5px solid rgba(255,255,255,.5);
+                                      background:rgba(255,255,255,.12);color:#fff;font-size:.8rem;
+                                      font-weight:700;text-decoration:none;margin-right:10px;
+                                      backdrop-filter:blur(4px);letter-spacing:.05em;transition:background .2s;">
+                                🇹🇭 TH
                             </a>
                         {% endif %}
 
@@ -182,9 +190,25 @@ TODO: add template variable details.
             {% block footer %}
                 <div class="relative text-sm text-gray-700 px-6 lg:px-12 mt-4 pt-2 pb-6 leading-normal border-t border-gray-300 {{ rightToLeft ? 'text-right' : 'text-left' }}">
                     {{ include('footer.twig.html') }}
-
                 </div>
             {% endblock %}
+
+            {# ── 7J Login Footer Bar ── #}
+            {% if not isLoggedIn %}
+            <div style="position:fixed;bottom:0;left:0;right:0;z-index:50;
+                 background:linear-gradient(to top,rgba(26,42,94,.92) 0%,rgba(26,42,94,.5) 70%,transparent 100%);
+                 padding:10px 24px;display:flex;align-items:center;
+                 justify-content:space-between;flex-wrap:wrap;gap:6px;">
+                <span style="font-size:.7rem;color:rgba(255,255,255,.7);font-weight:500;letter-spacing:.03em;">
+                    © 2026 7J English Center &nbsp;·&nbsp; Global Language Institute Online &nbsp;·&nbsp; V3.0.0
+                </span>
+                <div style="display:flex;gap:16px;">
+                    <a href="#" style="color:rgba(255,255,255,.8);font-size:.73rem;font-weight:700;text-decoration:none;">📘 Facebook</a>
+                    <a href="#" style="color:rgba(255,255,255,.8);font-size:.73rem;font-weight:700;text-decoration:none;">💬 LINE</a>
+                    <a href="#" style="color:rgba(255,255,255,.8);font-size:.73rem;font-weight:700;text-decoration:none;">▶️ YouTube</a>
+                </div>
+            </div>
+            {% endif %}
 
         </div>
 
