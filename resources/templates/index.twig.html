@@ -1,0 +1,187 @@
+{#<!--
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This is a Gibbon template file, written in HTML and Twig syntax.
+For info about editing, see: https://twig.symfony.com/doc/2.x/
+
+TODO: add template variable details.
+-->#}
+
+<!DOCTYPE html>
+<html lang="{{ lang }}" dir="{{ rightToLeft ? 'rtl' : 'ltr' }}">
+    <head>
+        {% block head %}
+        {{ include('head.twig.html') }}
+        {% if not isLoggedIn %}
+        <style>
+            html,body{background:#1A2A5E;background:linear-gradient(160deg,#1A2A5E 0%,#E8640A 55%,#F5A623 100%);margin:0;}
+            #content{padding:0!important;overflow:hidden;}
+            #content-wrap{overflow:hidden;}
+        </style>
+        {% endif %}
+        {% endblock head %}
+    </head>
+    <body x-data="{ modalOpen: false, modalType: 'none', globalShowHide: false }"
+        class="h-full flex flex-col font-sans {{ bodyBackground ? '' : 'body-gradient-' ~ themeColour|lower }}" style="{{ bodyBackground ? bodyBackground : '' }}" @modalwindow="modalType=$event.detail; modalOpen = true">
+        <a id="top"></a>
+        {% set sidebarPos = isLoggedIn ? 'left' : 'right' %}
+
+        <div class="px-4 sm:px-6 lg:px-12 pb-24">
+
+            {% block header %}
+                <div id="header" class="relative flex justify-between items-center">
+
+                    <a id="header-logo" class="block my-4 max-w-xs sm:max-w-full leading-none" href="{{ absoluteURL }}">
+                        <img class="block max-w-full {{ isLoggedIn ? 'h-12' : 'h-20 mt-4 mb-4' }}" alt="{{ organisationName }} Logo" src="{{ absoluteURL }}/{{ organisationLogo|default("themes/Default/img/logo.png")|trim('/', 'left') }}" style="max-height:100px;" />
+                    </a>
+
+                    <div class="flex-grow flex items-center justify-end text-right text-sm text-{{ themeColour }}-200">
+
+                        {# Language Switcher #}
+                        {% if lang starts with 'th' %}
+                            <a href="{{ absoluteURL }}/index.php?i18n=en_GB" title="English"
+                               class="mr-3 text-white text-2xl opacity-75 hover:opacity-100 transition-opacity" style="text-decoration:none;line-height:1;">
+                                🇬🇧
+                            </a>
+                        {% else %}
+                            <a href="{{ absoluteURL }}/index.php?i18n=th_TH" title="ภาษาไทย"
+                               class="mr-3 text-white text-2xl opacity-75 hover:opacity-100 transition-opacity" style="text-decoration:none;line-height:1;">
+                                🇹🇭
+                            </a>
+                        {% endif %}
+
+                        {% if isLoggedIn and currentUser %}
+                        <button onclick="window.location.reload()"
+                           title="รีเฟรสหน้า"
+                           class="text-white text-sm font-bold px-3 py-1.5 rounded-lg border border-white border-opacity-40 hover:bg-white hover:bg-opacity-20 transition flex items-center gap-1">
+                            ↻
+                        </button>
+                        <a href="{{ absoluteURL }}/logout.php"
+                           class="text-gray-800 text-sm font-bold px-4 py-1.5 rounded-lg bg-white hover:bg-gray-100 transition flex items-center gap-1 shadow-sm">
+                            Logout
+                        </a>
+                        {% endif %}
+
+                        {% if currentUser.houseName and currentUser.houseLogo %}
+                            <img class="ml-3 -mt-2 w-12 h-12" title="{{ currentUser.houseName }}" style="vertical-align: -75%;" src="{{ absoluteURL }}/{{ currentUser.houseLogo }}"/>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {# ── Marquee bar — แสดงเฉพาะหน้า Login เท่านั้น ── #}
+                {% if not isLoggedIn %}
+                <div style="overflow:hidden;margin:-4px -1rem 0;padding:7px 1rem;background:rgba(0,0,0,.15);backdrop-filter:blur(2px);">
+                    <style>
+                    @keyframes mq7j { 0%{transform:translateX(100%)} 100%{transform:translateX(-100%)} }
+                    </style>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="color:#fde68a;flex-shrink:0;font-size:.9rem;">⭐</span>
+                        <div style="flex:1;overflow:hidden;white-space:nowrap;">
+                            <span style="
+                                display:inline-block;
+                                animation:mq7j 22s linear infinite;
+                                font-size:.85rem;
+                                font-weight:600;
+                                color:#fff;
+                                letter-spacing:.04em;
+                                text-shadow:0 1px 3px rgba(0,0,0,.25);
+                            ">
+                                🎓&nbsp; Welcome to 7J English Center
+                                &nbsp;&nbsp;✦&nbsp;&nbsp;
+                                Global Language Institute Online
+                                &nbsp;&nbsp;✦&nbsp;&nbsp;
+                                พัฒนาภาษาอังกฤษ เรียนง่าย ได้ทุกที่ ทุกเวลา
+                                &nbsp;&nbsp;✦&nbsp;&nbsp;
+                                คอร์สคุณภาพ จากครูผู้เชี่ยวชาญ
+                                &nbsp;&nbsp;✦&nbsp;&nbsp;
+                                🌟&nbsp; Welcome to 7J English Center &nbsp;&nbsp;✦&nbsp;&nbsp; Global Language Institute Online &nbsp;&nbsp;&nbsp;&nbsp;
+                            </span>
+                        </div>
+                        <span style="color:#fde68a;flex-shrink:0;font-size:.9rem;">⭐</span>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if isLoggedIn %}
+                <nav id="header-menu" class="flex-1 justify-between">
+                    {{ include('menu.twig.html') }}
+                </nav>
+                {% endif %}
+
+            {% endblock %}
+        </div>
+        <div id="wrapOuter" class="flex-1 pt-24 bg-transparent-100">
+            <div id="wrap" class="px-0 sm:px-6 lg:px-12 -mt-48">
+                {% block beforePage %}
+                {% endblock beforePage %}
+
+                <div class="block lg:hidden mx-4 sm:mx-0 mb-4">
+                {% for type, alerts in page.alerts %}
+                    {% for text in alerts %}
+                        <div class="{{ type }}">{{ text|raw }}</div>
+                    {% endfor %}
+                {% endfor %}
+                </div>
+
+                <div id="content-wrap" class="relative w-full min-h-1/2 flex content-start {{ sidebar ? 'gap-4 lg:gap-6 flex flex-col' : 'flex-col' }} {{ sidebarPos == 'left' ? 'lg:flex-row' : 'lg:flex-row-reverse' }} {{ not isHomePage and not isLoggedIn ? 'flex-col-reverse'}} clearfix">
+
+                    {% if sidebar and (sidebarContents or menuModule) %}
+                        <div id="sidebar" class="w-full lg:w-sidebar lg:min-w-72 lg:max-w-xs ">
+                            {% block sidebar %}
+                            {{ include('navigation.twig.html') }}
+                            {% endblock sidebar %}
+                        </div>
+
+                    {% else %}
+                        {{ include('navigation.twig.html') }}
+                    {% endif %}
+
+                    <div id="content" class="{{ contentClass ? contentClass : 'max-w-full' }} {{ isHomePage and isLoggedIn ? 'bg-gray-100' : 'bg-white pb-6'}} w-full shadow  sm:rounded lg:flex-1 px-4 sm:px-8">
+
+                        <div id="content-inner" class="h-full">
+
+                            {% block page %}
+
+                                {{ include('page.twig.html') }}
+
+                                {{ content|join("\n")|raw }}
+                                
+                            {% endblock %}
+                        </div>
+                    </div>
+
+                </div>
+
+                {% if isLoggedIn %}
+                    <div class="text-right mt-2 text-xs pr-1">
+                        <a class='text-{{ themeColour }}-800' href='#top'>{{ __('Return to top') }}</a>
+                    </div>
+                {% endif %}
+
+                {% block afterPage %}
+                {% endblock afterPage %}
+            </div>
+
+            
+
+            {% block footer %}
+                <div class="relative text-sm text-gray-700 px-6 lg:px-12 mt-4 pt-2 pb-6 leading-normal border-t border-gray-300 {{ rightToLeft ? 'text-right' : 'text-left' }}">
+                    {{ include('footer.twig.html') }}
+
+                </div>
+            {% endblock %}
+
+        </div>
+
+        {% block privacy %}
+        {{ include('privacy.twig.html') }}
+        {% endblock privacy %}
+
+        {% block foot %}
+        {{ include('foot.twig.html') }}
+        {% endblock foot %}
+    </body>
+</html>

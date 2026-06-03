@@ -1,0 +1,42 @@
+{#<!-- 7J English Center - Welcome Banner -->#}
+{% import _self as homepage %}
+
+{# ===== HERO BANNER - ใช้ภาพ baner_7j.png โดยตรง ===== #}
+<div style="margin:-1rem -2rem 1.5rem -2rem;overflow:hidden;">
+    <img src="{{ absoluteURL }}/uploads/baner_7j1.png"
+         alt="7J English Center - Welcome Banner"
+         style="width:100%;height:auto;display:block;min-height:440px;object-fit:cover;object-position:center top;">
+</div>
+
+{# ===== EXTRA HOOKS ===== #}
+<div class="flex flex-wrap mb-4 -mx-2 items-stretch">
+
+    {% if publicRegistration %}
+        {{ homepage.card(__('Register'), __('Join our learning community.') ~ ' ' ~ __("It's free!"), "/?q=/publicRegistration.php") }}
+    {% endif %}
+
+    {% for hook in indexHooks %}
+        {{ homepage.card(hook.title, hook.text, hook.url, organisationName) }}
+    {% endfor %}
+
+    {% if privacyPolicy %}
+        {{ homepage.card(__('Privacy Policy'), __('Read more about how personal data is used, stored and retained at %1$s.'), "/?q=privacyPolicy.php", organisationName, 'first') }}
+    {% endif %}
+
+</div>
+
+{% macro card(name, content, url = '', organisationName, orgNamePos = 'first') %}
+    <div class="w-full sm:w-1/2 px-2 pb-4">
+        <a href="{{ absoluteURL ~ url }}" class="block border shadow-sm rounded bg-white h-full text-gray-800 hover:shadow-md hover:text-{{ themeColour }}-800 hover:border-{{ themeColour }}-600">
+            <div class="block m-0 pt-4 px-4 text-base uppercase font-bold font-sans tracking-tight">
+                {{ name }}
+                {{ icon('basic', 'chevron-double-right', 'size-6 float-right -mt-px fill-current') }}
+            </div>
+            <p class="mb-1 p-4 text-gray-700 leading-tight">
+                {% if orgNamePos == 'first' %}{{ content|format(organisationName, '', '')|raw }}
+                {% elseif orgNamePos == 'second' %}{{ content|format('', '', organisationName)|raw }}
+                {% else %}{{ content|raw }}{% endif %}
+            </p>
+        </a>
+    </div>
+{% endmacro card %}
