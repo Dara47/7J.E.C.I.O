@@ -437,8 +437,8 @@ $meetLink = $student['googleMeetLink'] ?: $student['teacherMeetLink'] ?: '';
           <p class="text-xs text-gray-400">ลิ้งก์ Google Meet จาก Admin</p>
         </div>
       </div>
-      <?php if ($student['googleMeetLink']): ?>
-      <a href="<?= htmlspecialchars($student['googleMeetLink']) ?>" target="_blank" rel="noopener"
+      <?php if ($meetLink): ?>
+      <a href="<?= htmlspecialchars($meetLink) ?>" target="_blank" rel="noopener"
          style="display:flex;align-items:center;justify-content:center;gap:8px;
                 width:100%;padding:10px;border-radius:12px;font-weight:700;font-size:.9rem;
                 color:#fff;text-decoration:none;
@@ -446,7 +446,7 @@ $meetLink = $student['googleMeetLink'] ?: $student['teacherMeetLink'] ?: '';
                 box-shadow:0 3px 10px rgba(59,130,246,.35);transition:opacity .15s;">
         📹 กดเข้าห้องเรียนเลย
       </a>
-      <p class="text-xs text-gray-400 text-center break-all"><?= htmlspecialchars($student['googleMeetLink']) ?></p>
+      <p class="text-xs text-gray-400 text-center break-all"><?= htmlspecialchars($meetLink) ?></p>
       <?php else: ?>
       <div style="width:100%;background:#f3f4f6;color:#9ca3af;font-size:.85rem;padding:10px;
                   border-radius:12px;text-align:center;cursor:not-allowed;">

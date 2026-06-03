@@ -40,15 +40,17 @@ $myStudents   = [];
 if ($userType === 'student') {
     $stmt = $pdo->prepare("
         SELECT s.googleMeetLink, s.totalClasses, s.completedClasses,
-               t.displayName AS teacherName
+               t.displayName AS teacherName, t.googleMeetLink AS teacherMeetLink
         FROM sevenj_students s
-        LEFT JOIN sevenj_teachers t ON t.id = s.teacherId
+        LEFT JOIN sevenj_schedule sch ON sch.student_id = s.id AND sch.status = 'active'
+        LEFT JOIN sevenj_teachers t ON t.id = sch.teacher_ref_id
         WHERE s.id = ?
+        LIMIT 1
     ");
     $stmt->execute([$userId]);
     $row = $stmt->fetch();
     if ($row) {
-        $meetLink     = $row['googleMeetLink'];
+        $meetLink     = $row['teacherMeetLink'] ?: $row['googleMeetLink'];
         $teacherName  = $row['teacherName'];
         $totalClasses = (int)$row['totalClasses'];
         $doneclasses  = (int)$row['completedClasses'];
