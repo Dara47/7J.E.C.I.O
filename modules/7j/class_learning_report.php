@@ -51,8 +51,27 @@ if (!$msg && isset($_SESSION['7j_clr_msg'])) {
     unset($_SESSION['7j_clr_msg']);
 }
 
-// ─── Auto-cleanup: ลบบันทึกที่เกิน 30 วันโดยอัตโนมัติ ───────────────────────
-$connection2->query("DELETE FROM sevenj_class_completions WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
+// ─── Auto-cleanup ────────────────────────────────────────────────────────────
+// กฎ: เกิน 60 วัน → ลบเสมอ
+$connection2->query("DELETE FROM sevenj_class_completions WHERE created_at < DATE_SUB(NOW(), INTERVAL 60 DAY)");
+// กฎ: เกิน 30 วัน + เรียนครบแล้ว (completed >= total) → ลบ
+// ถ้ายังค้างอยู่ → คงไว้จนครบ 60 วัน
+$connection2->query("
+    DELETE c FROM sevenj_class_completions c
+    WHERE c.created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)
+    AND (
+        NOT EXISTS (
+            SELECT 1 FROM sevenj_schedule sch
+            WHERE sch.student_id = c.student_id AND sch.status = 'active'
+        )
+        OR (
+            (SELECT COUNT(*) FROM sevenj_class_completions c2 WHERE c2.student_id = c.student_id)
+            >= (SELECT COALESCE(MAX(sch2.total_classes), 0)
+                FROM sevenj_schedule sch2
+                WHERE sch2.student_id = c.student_id AND sch2.status = 'active')
+        )
+    )
+");
 
 // ─── Filters ──────────────────────────────────────────────────────────────────
 $search   = trim($_GET['search']    ?? '');
@@ -155,7 +174,7 @@ function fmtTimePM(string $t): string {
     <div>
         <h2 style="font-size:1.4rem;font-weight:700;color:#1f2937;margin:0;">📋 รายงานการเรียน-การสอน</h2>
         <p style="font-size:.78rem;color:#6b7280;margin:3px 0 0;">บันทึกคาบเรียนที่เสร็จแล้วทุกวัน<?= $isAdmin?' — <span class="clr-admin-tag">🔑 Admin Mode</span>':'' ?></p>
-        <p style="font-size:.75rem;color:#d97706;margin:3px 0 0;">⏳ ข้อมูลจะถูกลบอัตโนมัติหลังจาก 30 วัน แม้ว่าจะลบนักเรียน/ครู/ตารางเรียนออกจากระบบแล้วก็ตาม</p>
+        <p style="font-size:.75rem;color:#d97706;margin:3px 0 0;">⏳ ลบอัตโนมัติ: เรียนครบแล้ว → 30 วัน &nbsp;|&nbsp; 🔒 ยังค้างอยู่ (เช่น 9/10) → 60 วัน</p>
     </div>
 </div>
 
@@ -272,9 +291,21 @@ function fmtTimePM(string $t): string {
             <td style="font-size:.75rem;color:#9ca3af;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($r['note'] ?? '') ?>"><?= htmlspecialchars($r['note'] ?? '—') ?></td>
             <td style="text-align:center;">
                 <?php
-                $daysLeft = (int)ceil((strtotime($r['created_at']) + 30*86400 - time()) / 86400);
-                if ($daysLeft <= 3):
-                ?><span class="clr-badge" style="background:#fee2e2;color:#991b1b;"><?= $daysLeft ?> วัน</span>
+                // ตรวจว่านักเรียนยังมีคาบค้างอยู่ไหม
+                $stCheck = $connection2->prepare("
+                    SELECT
+                        (SELECT COUNT(*) FROM sevenj_class_completions cx WHERE cx.student_id = ?) AS done_all,
+                        COALESCE((SELECT MAX(sch.total_classes) FROM sevenj_schedule sch WHERE sch.student_id = ? AND sch.status='active'), 0) AS total_pkg
+                ");
+                $stCheck->execute([$r['student_id'], $r['student_id']]);
+                $chk = $stCheck->fetch();
+                $hasRemaining = $chk && ($chk['total_pkg'] > 0) && ((int)$chk['done_all'] < (int)$chk['total_pkg']);
+                $expireDays   = $hasRemaining ? 60 : 30;
+                $daysLeft     = (int)ceil((strtotime($r['created_at']) + $expireDays * 86400 - time()) / 86400);
+                if ($hasRemaining):
+                ?><span class="clr-badge" style="background:#ede9fe;color:#5b21b6;" title="ยังค้างอยู่ — ลบเมื่อครบ 60 วัน">🔒 <?= $daysLeft ?> วัน</span>
+                <?php elseif ($daysLeft <= 3): ?>
+                <span class="clr-badge" style="background:#fee2e2;color:#991b1b;"><?= $daysLeft ?> วัน</span>
                 <?php elseif ($daysLeft <= 7): ?>
                 <span class="clr-badge" style="background:#fef3c7;color:#92400e;"><?= $daysLeft ?> วัน</span>
                 <?php else: ?>

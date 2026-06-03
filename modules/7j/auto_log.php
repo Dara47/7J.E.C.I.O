@@ -96,19 +96,27 @@ $dayName  = date('l');
 $today    = date('Y-m-d');
 $nowTime  = date('H:i');
 
-// ─── บันทึกคาบที่ล็อกไปแล้วในวันนี้ (จาก sevenj_class_completions) ────────────
+// ─── บันทึกวันนี้ — อ้างอิงจาก sevenj_schedule (มุมมองตารางเรียน) ──────────────
 $todayLogs = $connection2->query("
-    SELECT c.*,
-        COALESCE(st.displayName, c.student_name) AS disp_student,
-        COALESCE(t.displayName,  c.teacher_name) AS disp_teacher,
-        sch.total_classes AS total_classes,
-        (SELECT COUNT(*) FROM sevenj_class_completions c2 WHERE c2.student_id = c.student_id AND c2.id <= c.id) AS sch_session
-    FROM sevenj_class_completions c
-    LEFT JOIN sevenj_students st ON st.id = c.student_id
-    LEFT JOIN sevenj_teachers  t ON t.id  = c.teacher_ref_id
-    LEFT JOIN sevenj_schedule sch ON sch.id = c.schedule_id
-    WHERE c.completed_date = '".addslashes($today)."'
-    ORDER BY c.id DESC
+    SELECT sch.id AS sch_id, sch.total_classes, sch.schedule_type,
+        sch.day_of_week, sch.specific_date, sch.time_start, sch.time_end,
+        COALESCE(st.displayName, sch.student_name) AS disp_student,
+        COALESCE(t.displayName,  sch.teacher_name) AS disp_teacher,
+        COUNT(c.id) AS logged_today,
+        MAX(c.note) AS log_note,
+        (SELECT COUNT(*) FROM sevenj_class_completions c2 WHERE c2.student_id = sch.student_id) AS total_done_all
+    FROM sevenj_schedule sch
+    LEFT JOIN sevenj_students st ON st.id = sch.student_id
+    LEFT JOIN sevenj_teachers  t ON t.id  = sch.teacher_ref_id
+    INNER JOIN sevenj_class_completions c ON c.schedule_id = sch.id
+        AND c.completed_date = '".addslashes($today)."'
+    WHERE sch.status = 'active'
+      AND (
+          (sch.schedule_type = 'weekly'   AND LOWER(sch.day_of_week)  = LOWER('".addslashes($dayName)."'))
+          OR (sch.schedule_type = 'one_time' AND sch.specific_date = '".addslashes($today)."')
+      )
+    GROUP BY sch.id
+    ORDER BY sch.time_start
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 $todaySchedules = $connection2->query("
@@ -182,18 +190,7 @@ function fmtTimePM(string $t): string {
         <h2 style="font-size:1.4rem;font-weight:700;color:#1f2937;margin:0;">⚙️ Auto Class Log</h2>
         <p style="font-size:.85rem;color:#6b7280;margin:4px 0 0;">ระบบตัดคาบเรียนอัตโนมัติ — วันนี้: <?= $dayTH[$dayName]??$dayName ?> <?= date('d/m/Y') ?> เวลา <?= $nowTime ?></p>
     </div>
-    <form method="post">
-        <input type="hidden" name="action" value="trigger">
-        <button type="submit" class="al-btn al-btn-primary">▶ Trigger ทันที</button>
-    </form>
 </div>
-
-<?php if ($triggerMsg): ?>
-<div class="al-card" style="border-left:4px solid #059669;">
-    <div style="font-weight:700;color:#065f46;margin-bottom:8px;">✅ ผลการ Trigger</div>
-    <div class="al-trigger-out"><?= htmlspecialchars($triggerMsg) ?></div>
-</div>
-<?php endif; ?>
 
 
 <!-- ตารางวันนี้ -->
@@ -291,17 +288,16 @@ function fmtTimePM(string $t): string {
     <div style="overflow-x:auto;">
     <table class="al-table">
         <thead>
-            <tr><th>#ID</th><th>นักเรียน</th><th>ครู</th><th>เวลา</th><th style="text-align:center;">คาบที่</th><th>หมายเหตุ</th></tr>
+            <tr><th>นักเรียน</th><th>ครู</th><th>เวลา (ตาราง)</th><th style="text-align:center;">เรียนแล้ว/ทั้งหมด</th><th>หมายเหตุ</th></tr>
         </thead>
         <tbody>
         <?php foreach ($todayLogs as $lg): ?>
         <tr>
-            <td><span class="al-badge" style="background:#f3f4f6;color:#6b7280;">#<?= (int)$lg['id'] ?></span></td>
             <td style="font-weight:600;"><?= htmlspecialchars($lg['disp_student']) ?></td>
             <td style="color:#6b7280;"><?= htmlspecialchars($lg['disp_teacher']) ?></td>
-            <td style="font-family:monospace;"><?= $lg['time_start'] ? fmtTimePM($lg['time_start']) : '—' ?></td>
-            <td style="text-align:center;"><span class="al-badge" style="background:#dbeafe;color:#1e40af;">#<?= (int)($lg['sch_session'] ?? $lg['session_number']) ?>/<?= (int)($lg['total_classes'] ?? 0) ?></span></td>
-            <td style="font-size:.75rem;color:#9ca3af;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($lg['note'] ?? '—') ?></td>
+            <td style="font-family:monospace;"><?= $lg['time_start'] ? fmtTimePM($lg['time_start']).' – '.fmtTimePM($lg['time_end']) : '—' ?></td>
+            <td style="text-align:center;"><span class="al-badge" style="background:#dbeafe;color:#1e40af;"><?= (int)$lg['total_done_all'] ?>/<?= (int)$lg['total_classes'] ?></span></td>
+            <td style="font-size:.75rem;color:#9ca3af;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($lg['log_note'] ?? '—') ?></td>
         </tr>
         <?php endforeach; ?>
         </tbody>
