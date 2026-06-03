@@ -140,6 +140,12 @@ if ($action === 'add_student') {
         $hash = password_hash($code, PASSWORD_DEFAULT);
         $connection2->prepare('UPDATE sevenj_teachers SET username=?, password_hash=? WHERE id=?')
                     ->execute([$code, $hash, $id]);
+        // ส่ง Google Meet link ไปยังนักเรียนที่ผูกกับครูนี้อัตโนมัติ
+        $meetLink = safeNullStr($_POST['googleMeetLink'] ?? '');
+        if ($meetLink) {
+            $connection2->prepare('UPDATE sevenj_students SET googleMeetLink=? WHERE teacherId=?')
+                        ->execute([$meetLink, $id]);
+        }
         $msg = 'success|เพิ่มครูสำเร็จ ('.$code.') — Portal login: '.$code.' / '.$code;
     }
 } elseif ($action === 'edit_teacher') {
@@ -159,6 +165,12 @@ if ($action === 'add_student') {
             safeNullStr($_POST['googleMeetLink'] ?? ''),
             $tid,
         ]);
+        // ส่ง Google Meet link ไปยังนักเรียนที่ผูกกับครูนี้อัตโนมัติ
+        $meetLink = safeNullStr($_POST['googleMeetLink'] ?? '');
+        if ($meetLink) {
+            $connection2->prepare('UPDATE sevenj_students SET googleMeetLink=? WHERE teacherId=?')
+                        ->execute([$meetLink, $tid]);
+        }
         $msg = 'success|แก้ไขข้อมูลครูสำเร็จ';
     }
 } elseif ($action === 'delete_teacher') {

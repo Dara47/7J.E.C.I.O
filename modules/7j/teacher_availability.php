@@ -20,23 +20,33 @@ $action = $_POST['action'] ?? '';
 $msg = '';
 
 if ($action === 'add_slot') {
-    $tid   = trim($_POST['teacher_id'] ?? '');
-    $type  = ($_POST['slot_type'] ?? '') === 'specific_date' ? 'specific_date' : 'weekly';
-    $day   = $type === 'weekly'        ? (trim($_POST['day'] ?? 'monday') ?: null) : null;
-    $sdate = $type === 'specific_date' ? (trim($_POST['specific_date'] ?? '') ?: null) : null;
-    $stime = trim($_POST['start_time'] ?? '');
-    $etime = trim($_POST['end_time']   ?? '');
-    $note  = trim($_POST['note']       ?? '') ?: null;
+    $tid    = trim($_POST['teacher_id'] ?? '');
+    $type   = ($_POST['slot_type'] ?? '') === 'specific_date' ? 'specific_date' : 'weekly';
+    $day    = $type === 'weekly'        ? (trim($_POST['day'] ?? 'monday') ?: null) : null;
+    $sdate  = $type === 'specific_date' ? (trim($_POST['specific_date'] ?? '') ?: null) : null;
+    $note   = trim($_POST['note'] ?? '') ?: null;
+    $starts = (array)($_POST['start_time'] ?? []);
+    $ends   = (array)($_POST['end_time']   ?? []);
 
-    if ($tid && $stime && $etime) {
-        $id   = 'slot_' . time() . rand(100, 999);
+    $inserted = 0;
+    if ($tid) {
         $stmt = $connection2->prepare(
             'INSERT INTO sevenj_teacher_availability
              (id, teacher_id, type, day, specific_date, start_time, end_time, note)
              VALUES (?,?,?,?,?,?,?,?)'
         );
-        $stmt->execute([$id, $tid, $type, $day, $sdate, $stime, $etime, $note]);
-        $msg = 'success|เพิ่มช่วงเวลาว่างสำเร็จ';
+        foreach ($starts as $i => $stime) {
+            $stime = trim($stime);
+            $etime = trim($ends[$i] ?? '');
+            if ($stime && $etime) {
+                $id = 'slot_' . time() . '_' . $i . '_' . rand(10, 99);
+                $stmt->execute([$id, $tid, $type, $day, $sdate, $stime, $etime, $note]);
+                $inserted++;
+            }
+        }
+        $msg = $inserted > 0
+            ? 'success|เพิ่มช่วงเวลาว่าง ' . $inserted . ' ช่วงสำเร็จ'
+            : 'error|กรุณากรอกเวลาเริ่มและสิ้นสุดอย่างน้อย 1 ช่วง';
     } else {
         $msg = 'error|กรุณากรอกข้อมูลให้ครบ (ครู, เวลาเริ่ม, เวลาสิ้นสุด)';
     }
@@ -278,7 +288,12 @@ function initials($name) {
         </div>
 
         <div class="ta-form-group" id="add-day-group">
-            <label>วันในสัปดาห์</label>
+            <label>เลือกวันที่ <span style="font-weight:400;color:#9ca3af;">(ระบบจะเลือกวันให้อัตโนมัติ)</span></label>
+            <input type="date" id="add-weekly-date"
+                onchange="autoSelectDay(this.value)"
+                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.88rem;box-sizing:border-box;margin-bottom:6px;">
+            <span id="add-weekly-day-label" style="font-size:.82rem;color:#ea580c;font-weight:700;margin-bottom:6px;display:block;"></span>
+            <label style="margin-top:2px;">วันในสัปดาห์ <span style="font-weight:400;color:#9ca3af;">(หรือเลือกเองได้)</span></label>
             <select name="day" id="add-day">
                 <?php foreach ($DAYS as $val => $label): ?>
                 <option value="<?= $val ?>"><?= $label ?></option>
@@ -287,18 +302,28 @@ function initials($name) {
         </div>
         <div class="ta-form-group" id="add-date-group" style="display:none;">
             <label>วันที่</label>
-            <input type="date" name="specific_date" id="add-specific-date">
+            <input type="date" name="specific_date" id="add-specific-date"
+                onchange="showThaiDay(this.value,'add-thai-day')"
+                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.88rem;box-sizing:border-box;">
+            <span id="add-thai-day" style="font-size:.82rem;color:#ea580c;font-weight:700;margin-top:4px;display:block;"></span>
         </div>
 
-        <div class="ta-grid2">
-            <div class="ta-form-group">
-                <label>เวลาเริ่ม</label>
-                <input type="time" name="start_time" id="add-start" value="09:00" required>
+        <div class="ta-form-group">
+            <div style="display:grid;grid-template-columns:44px 1fr 1fr;gap:6px;align-items:center;margin-bottom:4px;">
+                <span></span>
+                <span style="font-size:.76rem;font-weight:600;color:#374151;">เวลาเริ่ม</span>
+                <span style="font-size:.76rem;font-weight:600;color:#374151;">เวลาสิ้นสุด</span>
             </div>
-            <div class="ta-form-group">
-                <label>เวลาสิ้นสุด</label>
-                <input type="time" name="end_time" id="add-end" value="10:00" required>
+            <?php for ($si = 1; $si <= 4; $si++): ?>
+            <div style="display:grid;grid-template-columns:44px 1fr 1fr;gap:6px;align-items:center;margin-bottom:6px;">
+                <span style="font-size:.75rem;color:#9ca3af;font-weight:600;">ช่วง <?= $si ?><?= $si===1?' *':'' ?></span>
+                <input type="time" name="start_time[]" <?= $si===1?'id="add-start" value="09:00"':'' ?>
+                    style="padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.85rem;width:100%;box-sizing:border-box;">
+                <input type="time" name="end_time[]" <?= $si===1?'id="add-end" value="10:00"':'' ?>
+                    style="padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.85rem;width:100%;box-sizing:border-box;">
             </div>
+            <?php endfor; ?>
+            <div style="font-size:.73rem;color:#9ca3af;">* ช่วงที่ 1 จำเป็น — ช่วงที่ 2-4 เว้นว่างได้</div>
         </div>
         <div class="ta-form-group">
             <label>หมายเหตุ (ถ้ามี)</label>
@@ -411,11 +436,33 @@ function toggleSlotType(prefix) {
     document.getElementById(prefix + '-date-group').style.display = type === 'specific_date' ? '' : 'none';
 }
 
+// Thai day name helper
+var THAI_DAYS     = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+var THAI_DAY_VALS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+function showThaiDay(dateStr, targetId) {
+    var el = document.getElementById(targetId);
+    if (!el) return;
+    if (!dateStr) { el.textContent = ''; return; }
+    var d = new Date(dateStr + 'T00:00:00');
+    el.textContent = 'วัน' + THAI_DAYS[d.getDay()];
+}
+function autoSelectDay(dateStr) {
+    if (!dateStr) { document.getElementById('add-weekly-day-label').textContent = ''; return; }
+    var d = new Date(dateStr + 'T00:00:00');
+    var dow = d.getDay();
+    var sel = document.getElementById('add-day');
+    if (sel) sel.value = THAI_DAY_VALS[dow];
+    var lbl = document.getElementById('add-weekly-day-label');
+    if (lbl) lbl.textContent = 'วัน' + THAI_DAYS[dow];
+}
+
 // Add slot
 function openAddSlot(teacherId, teacherName) {
     document.getElementById('add-teacher-id').value = teacherId;
     document.getElementById('add-teacher-name').textContent = teacherName;
-    document.getElementById('add-slot-type').value = 'weekly';
+    document.getElementById('add-slot-type').value = 'specific_date';
+    document.getElementById('add-specific-date').value = '';
+    document.getElementById('add-thai-day').textContent = '';
     toggleSlotType('add');
     openModal('add-slot');
 }

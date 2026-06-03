@@ -571,6 +571,20 @@ function msInitials($name) {
 
         <!-- ครู -->
         <div class="ms-section-label">ครู</div>
+        <div class="ms-form-group" style="position:relative;">
+            <label>ค้นหาครู</label>
+            <input type="text" id="f-teacher-search" autocomplete="off"
+                   placeholder="พิมพ์ชื่อหรือรหัสครู..."
+                   oninput="teacherSearch(this.value)"
+                   onfocus="teacherSearch(this.value)"
+                   style="padding-right:32px;">
+            <span id="f-teacher-clear" onclick="clearTeacher()"
+                  style="display:none;position:absolute;right:28px;top:28px;cursor:pointer;color:#9ca3af;font-size:1rem;">✕</span>
+            <div id="f-teacher-dropdown"
+                 style="display:none;position:absolute;z-index:200;width:100%;background:#fff;
+                        border:1px solid #d1d5db;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);
+                        max-height:200px;overflow-y:auto;top:100%;left:0;margin-top:2px;"></div>
+        </div>
         <div class="ms-form-group">
             <label>เลือกจากระบบ (แนะนำ)</label>
             <select name="teacher_ref_id" id="f-teacher-id" onchange="onTeacherChange(this)">
@@ -857,10 +871,60 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// ─── Teacher Search ────────────────────────────────────────────────────────
+function teacherSearch(q) {
+    var dd = document.getElementById('f-teacher-dropdown');
+    if (!q.trim()) { dd.style.display = 'none'; return; }
+    var lq = q.toLowerCase();
+    var matches = Object.values(teachersData).filter(function(t) {
+        return (t.displayName||'').toLowerCase().includes(lq)
+            || (t.teacherCode||'').toLowerCase().includes(lq);
+    });
+    if (!matches.length) { dd.style.display = 'none'; return; }
+    dd.innerHTML = '';
+    matches.forEach(function(t) {
+        var item = document.createElement('div');
+        item.style.cssText = 'padding:9px 14px;cursor:pointer;border-bottom:1px solid #f3f4f6;font-size:.88rem;';
+        item.innerHTML = '<strong>' + t.displayName + '</strong>'
+            + (t.teacherCode ? ' <span style="color:#9ca3af;font-size:.78rem;">(' + t.teacherCode + ')</span>' : '');
+        item.onmousedown = function(e) { e.preventDefault(); selectTeacher(t.id); };
+        item.onmouseover = function() { this.style.background='#f9fafb'; };
+        item.onmouseout  = function() { this.style.background=''; };
+        dd.appendChild(item);
+    });
+    dd.style.display = 'block';
+}
+function selectTeacher(tid) {
+    var t = teachersData[tid];
+    if (!t) return;
+    document.getElementById('f-teacher-search').value = t.displayName + (t.teacherCode ? ' (' + t.teacherCode + ')' : '');
+    document.getElementById('f-teacher-clear').style.display = 'inline';
+    document.getElementById('f-teacher-dropdown').style.display = 'none';
+    document.getElementById('f-teacher-id').value = tid;
+    document.getElementById('f-tname').value = t.displayName || '';
+    showAvailability(tid);
+}
+function clearTeacher() {
+    document.getElementById('f-teacher-search').value = '';
+    document.getElementById('f-teacher-clear').style.display = 'none';
+    document.getElementById('f-teacher-id').value = '';
+    document.getElementById('f-tname').value = '';
+    document.getElementById('f-teacher-dropdown').style.display = 'none';
+    showAvailability('');
+}
+document.addEventListener('click', function(e) {
+    if (!document.getElementById('f-teacher-search').contains(e.target))
+        document.getElementById('f-teacher-dropdown').style.display = 'none';
+});
+
 // เมื่อเลือกครูจาก dropdown — auto-fill ชื่อ + แสดง availability
 function onTeacherChange(sel) {
     var opt = sel.options[sel.selectedIndex];
     document.getElementById('f-tname').value = opt.value ? (opt.dataset.name || '') : '';
+    if (opt.value && teachersData[opt.value]) {
+        document.getElementById('f-teacher-search').value = opt.dataset.name || '';
+        document.getElementById('f-teacher-clear').style.display = 'inline';
+    }
     showAvailability(opt.value);
 }
 
