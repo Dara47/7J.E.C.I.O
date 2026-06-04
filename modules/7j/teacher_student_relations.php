@@ -103,12 +103,12 @@ foreach ($schedRows as $r) {
 }
 
 // ─── Merge: นักเรียนคนเดียวกันที่มีหลาย schedule กับครูคนเดียว ──────────────
-// total/completed นับเฉพาะ active — package ที่ completed แล้วไม่นับซ้ำ
+// total/completed นับจาก active + completed (อ้างอิงบันทึกคาบเรียนจริง)
 foreach ($byTeacher as &$tData) {
     $merged = [];
     foreach ($tData['students'] as $s) {
         $gKey    = !empty($s['stu_id']) ? ('id:'.$s['stu_id']) : ('nm:'.$s['stu_name'].'|'.($s['stu_code']??''));
-        $isActive = ($s['sch_status'] ?? 'active') === 'active';
+        $isActive = in_array(($s['sch_status'] ?? 'active'), ['active', 'completed']);
         if (!isset($merged[$gKey])) {
             $merged[$gKey] = [
                 'stu_id'            => $s['stu_id'],

@@ -110,7 +110,7 @@ $todayLogs = $connection2->query("
     LEFT JOIN sevenj_teachers  t ON t.id  = sch.teacher_ref_id
     INNER JOIN sevenj_class_completions c ON c.schedule_id = sch.id
         AND c.completed_date = '".addslashes($today)."'
-    WHERE sch.status = 'active'
+    WHERE sch.status IN ('active','completed')
       AND (
           (sch.schedule_type = 'weekly'   AND LOWER(sch.day_of_week)  = LOWER('".addslashes($dayName)."'))
           OR (sch.schedule_type = 'one_time' AND sch.specific_date = '".addslashes($today)."')
