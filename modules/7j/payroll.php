@@ -36,6 +36,8 @@ try {
         teacher_name    VARCHAR(200) NOT NULL,
         sessions_count  INT DEFAULT 0,
         pay_rate        DECIMAL(10,2) DEFAULT 0,
+        roles_json      TEXT,
+        total_amount    DECIMAL(10,2) DEFAULT 0,
         date_from       DATE,
         date_to         DATE,
         week_label      VARCHAR(200),
@@ -44,6 +46,29 @@ try {
         paid_at         DATETIME,
         exported_at     DATETIME,
         created_at      DATETIME DEFAULT NOW()
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Exception $e) {}
+// เพิ่มคอลัมน์ใหม่ถ้ายังไม่มี (backward compat)
+foreach (['roles_json TEXT', 'total_amount DECIMAL(10,2) DEFAULT 0'] as $col) {
+    try { $connection2->query("ALTER TABLE sevenj_payroll ADD COLUMN $col"); } catch (Exception $e) {}
+}
+
+try {
+    $connection2->query("CREATE TABLE IF NOT EXISTS sevenj_teacher_rate_templates (
+        id           INT AUTO_INCREMENT PRIMARY KEY,
+        teacher_id   VARCHAR(120),
+        teacher_name VARCHAR(200) NOT NULL UNIQUE,
+        rates_json   TEXT,
+        updated_at   DATETIME DEFAULT NOW()
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Exception $e) {}
+
+try {
+    $connection2->query("CREATE TABLE IF NOT EXISTS sevenj_admin_rate_templates (
+        id           INT AUTO_INCREMENT PRIMARY KEY,
+        admin_name   VARCHAR(200) NOT NULL UNIQUE,
+        rates_json   TEXT,
+        updated_at   DATETIME DEFAULT NOW()
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Exception $e) {}
 
@@ -68,21 +93,116 @@ $action = $_POST['action'] ?? '';
 $msg    = '';
 
 if ($action === 'add_entry') {
-    $tid   = trim($_POST['teacher_id']      ?? '');
-    $tname = trim($_POST['teacher_name']    ?? '');
-    $sess  = max(0, (int)($_POST['sessions_count'] ?? 0));
-    $rate  = max(0, (float)($_POST['pay_rate']     ?? 0));
-    $dfrom = trim($_POST['date_from']       ?? '') ?: null;
-    $dto   = trim($_POST['date_to']         ?? '') ?: null;
-    $week  = trim($_POST['week_label']      ?? '') ?: null;
-    $note  = trim($_POST['note']            ?? '') ?: null;
+    $tid    = trim($_POST['teacher_id']    ?? '');
+    $tname  = trim($_POST['teacher_name']  ?? '');
+    $rnames = (array)($_POST['role_name']  ?? []);
+    $rrates = (array)($_POST['role_rate']  ?? []);
+    $rcnts  = (array)($_POST['role_count'] ?? []);
+    $dfrom  = trim($_POST['date_from']     ?? '') ?: null;
+    $dto    = trim($_POST['date_to']       ?? '') ?: null;
+    $week   = trim($_POST['week_label']    ?? '') ?: null;
+    $note   = trim($_POST['note']          ?? '') ?: null;
+    $roles  = []; $total = 0; $totalSess = 0;
+    for ($i = 0; $i < count($rnames); $i++) {
+        $rn = trim($rnames[$i] ?? '');
+        $rr = max(0, (float)($rrates[$i]  ?? 0));
+        $rc = max(0, (int)($rcnts[$i]     ?? 0));
+        if ($rn) { $roles[] = ['role'=>$rn,'rate'=>$rr,'count'=>$rc]; $total += $rr*$rc; $totalSess += $rc; }
+    }
     if ($tname) {
         $connection2->prepare("INSERT INTO sevenj_payroll
-            (teacher_id,teacher_name,sessions_count,pay_rate,date_from,date_to,week_label,note)
-            VALUES (?,?,?,?,?,?,?,?)")
-            ->execute([$tid ?: null, $tname, $sess, $rate, $dfrom, $dto, $week, $note]);
+            (teacher_id,teacher_name,sessions_count,pay_rate,roles_json,total_amount,date_from,date_to,week_label,note)
+            VALUES (?,?,?,0,?,?,?,?,?,?)")
+            ->execute([$tid ?: null, $tname, $totalSess,
+                       json_encode($roles, JSON_UNESCAPED_UNICODE), $total,
+                       $dfrom, $dto, $week, $note]);
         $msg = 'success|เพิ่มรายการครูสำเร็จ';
     } else { $msg = 'error|กรุณาระบุชื่อครู'; }
+
+} elseif ($action === 'edit_entry') {
+    $pid    = (int)($_POST['payroll_id']   ?? 0);
+    $tname  = trim($_POST['teacher_name']  ?? '');
+    $rnames = (array)($_POST['role_name']  ?? []);
+    $rrates = (array)($_POST['role_rate']  ?? []);
+    $rcnts  = (array)($_POST['role_count'] ?? []);
+    $dfrom  = trim($_POST['date_from']     ?? '') ?: null;
+    $dto    = trim($_POST['date_to']       ?? '') ?: null;
+    $week   = trim($_POST['week_label']    ?? '') ?: null;
+    $note   = trim($_POST['note']          ?? '') ?: null;
+    $roles  = []; $total = 0; $totalSess = 0;
+    for ($i = 0; $i < count($rnames); $i++) {
+        $rn = trim($rnames[$i] ?? '');
+        $rr = max(0, (float)($rrates[$i]  ?? 0));
+        $rc = max(0, (int)($rcnts[$i]     ?? 0));
+        if ($rn) { $roles[] = ['role'=>$rn,'rate'=>$rr,'count'=>$rc]; $total += $rr*$rc; $totalSess += $rc; }
+    }
+    if ($pid && $tname) {
+        $connection2->prepare("UPDATE sevenj_payroll SET
+            teacher_name=?, sessions_count=?, pay_rate=0,
+            roles_json=?, total_amount=?, date_from=?, date_to=?, week_label=?, note=?
+            WHERE id=?")
+            ->execute([$tname, $totalSess,
+                       json_encode($roles, JSON_UNESCAPED_UNICODE), $total,
+                       $dfrom, $dto, $week, $note, $pid]);
+        $msg = 'success|แก้ไขรายการสำเร็จ';
+    } else { $msg = 'error|ข้อมูลไม่ครบ'; }
+
+} elseif ($action === 'save_rate_template') {
+    // AJAX — บันทึก template อัตราค่าจ้างครู
+    header('Content-Type: application/json; charset=utf-8');
+    $tid    = trim($_POST['teacher_id']    ?? '');
+    $tname  = trim($_POST['teacher_name']  ?? '');
+    $rnames = (array)($_POST['role_name']  ?? []);
+    $rrates = (array)($_POST['role_rate']  ?? []);
+    $rates  = [];
+    for ($i = 0; $i < count($rnames); $i++) {
+        $rn = trim($rnames[$i] ?? '');
+        $rr = max(0, (float)($rrates[$i] ?? 0));
+        if ($rn) $rates[] = ['role' => $rn, 'rate' => $rr];
+    }
+    if ($tname) {
+        $ex = $connection2->prepare("SELECT id FROM sevenj_teacher_rate_templates WHERE teacher_name=? LIMIT 1");
+        $ex->execute([$tname]);
+        if ($ex->fetchColumn()) {
+            $connection2->prepare("UPDATE sevenj_teacher_rate_templates SET teacher_id=?, rates_json=?, updated_at=NOW() WHERE teacher_name=?")
+                ->execute([$tid ?: null, json_encode($rates, JSON_UNESCAPED_UNICODE), $tname]);
+        } else {
+            $connection2->prepare("INSERT INTO sevenj_teacher_rate_templates (teacher_id,teacher_name,rates_json) VALUES (?,?,?)")
+                ->execute([$tid ?: null, $tname, json_encode($rates, JSON_UNESCAPED_UNICODE)]);
+        }
+        echo json_encode(['ok' => true, 'msg' => 'บันทึกอัตราค่าจ้างสำหรับ '.$tname.' แล้ว']);
+    } else {
+        echo json_encode(['ok' => false, 'msg' => 'กรุณาระบุชื่อครู']);
+    }
+    exit;
+
+} elseif ($action === 'save_admin_rate_template') {
+    // AJAX — บันทึก template อัตราค่าจ้างแอดมิน
+    header('Content-Type: application/json; charset=utf-8');
+    $aname  = trim($_POST['admin_name']   ?? '');
+    $rnames = (array)($_POST['role_name'] ?? []);
+    $rrates = (array)($_POST['role_rate'] ?? []);
+    $rates  = [];
+    for ($i = 0; $i < count($rnames); $i++) {
+        $rn = trim($rnames[$i] ?? '');
+        $rr = max(0, (float)($rrates[$i] ?? 0));
+        if ($rn) $rates[] = ['role' => $rn, 'rate' => $rr];
+    }
+    if ($aname) {
+        $ex = $connection2->prepare("SELECT id FROM sevenj_admin_rate_templates WHERE admin_name=? LIMIT 1");
+        $ex->execute([$aname]);
+        if ($ex->fetchColumn()) {
+            $connection2->prepare("UPDATE sevenj_admin_rate_templates SET rates_json=?, updated_at=NOW() WHERE admin_name=?")
+                ->execute([json_encode($rates, JSON_UNESCAPED_UNICODE), $aname]);
+        } else {
+            $connection2->prepare("INSERT INTO sevenj_admin_rate_templates (admin_name,rates_json) VALUES (?,?)")
+                ->execute([$aname, json_encode($rates, JSON_UNESCAPED_UNICODE)]);
+        }
+        echo json_encode(['ok' => true, 'msg' => 'บันทึกอัตราค่าจ้างสำหรับ '.$aname.' แล้ว']);
+    } else {
+        echo json_encode(['ok' => false, 'msg' => 'กรุณาระบุชื่อแอดมิน']);
+    }
+    exit;
 
 } elseif ($action === 'mark_paid') {
     $pid = (int)($_POST['payroll_id'] ?? 0);
@@ -128,6 +248,32 @@ if ($action === 'add_entry') {
         $msg = 'success|เพิ่มรายการแอดมินสำเร็จ';
     } else { $msg = 'error|กรุณาระบุชื่อแอดมิน'; }
 
+} elseif ($action === 'edit_admin') {
+    $pid    = (int)($_POST['admin_payroll_id'] ?? 0);
+    $aname  = trim($_POST['admin_name']    ?? '');
+    $rnames = (array)($_POST['role_name']  ?? []);
+    $rrates = (array)($_POST['role_rate']  ?? []);
+    $rcnts  = (array)($_POST['role_count'] ?? []);
+    $dfrom  = trim($_POST['adm_date_from'] ?? '') ?: null;
+    $dto    = trim($_POST['adm_date_to']   ?? '') ?: null;
+    $week   = trim($_POST['adm_week_label']?? '') ?: null;
+    $note   = trim($_POST['adm_note']      ?? '') ?: null;
+    $roles  = []; $total = 0;
+    for ($i = 0; $i < count($rnames); $i++) {
+        $rn = trim($rnames[$i] ?? '');
+        $rr = max(0, (float)($rrates[$i] ?? 0));
+        $rc = max(0, (int)($rcnts[$i]    ?? 0));
+        if ($rn) { $roles[] = ['role'=>$rn,'rate'=>$rr,'count'=>$rc]; $total += $rr*$rc; }
+    }
+    if ($pid && $aname) {
+        $connection2->prepare("UPDATE sevenj_admin_payroll SET
+            admin_name=?, roles_json=?, total_amount=?, date_from=?, date_to=?, week_label=?, note=?
+            WHERE id=?")
+            ->execute([$aname, json_encode($roles, JSON_UNESCAPED_UNICODE), $total,
+                       $dfrom, $dto, $week, $note, $pid]);
+        $msg = 'success|แก้ไขรายการแอดมินสำเร็จ';
+    } else { $msg = 'error|ข้อมูลไม่ครบ'; }
+
 } elseif ($action === 'mark_admin_paid') {
     $pid = (int)($_POST['admin_payroll_id'] ?? 0);
     if ($pid) {
@@ -149,6 +295,30 @@ if ($action === 'add_entry') {
 
 } elseif ($action === 'export') {
     // handled after fetch
+}
+
+// ─── Fetch admin rate template (AJAX) ────────────────────────────────────────
+if (isset($_GET['fetch_admin_rate_template'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $aname = trim($_GET['aname'] ?? '');
+    $stmt  = $connection2->prepare("SELECT rates_json FROM sevenj_admin_rate_templates WHERE admin_name=? LIMIT 1");
+    $stmt->execute([$aname]);
+    $row   = $stmt->fetch(PDO::FETCH_ASSOC);
+    echo json_encode(['rates' => $row ? (json_decode($row['rates_json'], true) ?: []) : []]);
+    exit;
+}
+
+// ─── Fetch rate template (AJAX) ──────────────────────────────────────────────
+if (isset($_GET['fetch_rate_template'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $tid   = trim($_GET['tid']   ?? '');
+    $tname = trim($_GET['tname'] ?? '');
+    $stmt  = $connection2->prepare("SELECT rates_json FROM sevenj_teacher_rate_templates
+        WHERE (? != '' AND teacher_id=?) OR teacher_name=? LIMIT 1");
+    $stmt->execute([$tid, $tid, $tname]);
+    $row   = $stmt->fetch(PDO::FETCH_ASSOC);
+    echo json_encode(['rates' => $row ? (json_decode($row['rates_json'], true) ?: []) : []]);
+    exit;
 }
 
 // ─── Fetch sessions สำหรับ auto-fill modal ───────────────────────────────────
@@ -282,8 +452,9 @@ if (isset($_GET['print']) && !empty($_SESSION['7j_payroll_pdf'])) {
 }
 
 // ─── Summary calculations ─────────────────────────────────────────────────────
-$grandTotal      = array_sum(array_map(fn($r) => $r['sessions_count'] * $r['pay_rate'], $records));
-$totalPaid       = array_sum(array_map(fn($r) => $r['status']==='paid' ? $r['sessions_count']*$r['pay_rate'] : 0, $records));
+$teaRowTotal     = fn($r) => !empty($r['roles_json']) ? (float)$r['total_amount'] : (float)$r['sessions_count'] * (float)$r['pay_rate'];
+$grandTotal      = array_sum(array_map($teaRowTotal, $records));
+$totalPaid       = array_sum(array_map(fn($r) => $r['status']==='paid' ? ($teaRowTotal)($r) : 0.0, $records));
 $totalPending    = $grandTotal - $totalPaid;
 
 $admGrandTotal   = array_sum(array_column($adminRecords, 'total_amount'));
@@ -393,7 +564,7 @@ endif;
             <input type="hidden" name="q" value="/modules/7j/payroll.php">
             <button type="submit" class="py-btn py-btn-outline" style="font-size:.8rem;padding:6px 14px;">🔒 ออกจากระบบบัญชี</button>
         </form>
-        <button class="py-btn py-btn-primary" id="btn-add-teacher" onclick="pyOpenModal('add')" style="font-size:.9rem;padding:8px 20px;">
+        <button class="py-btn py-btn-primary" id="btn-add-teacher" onclick="teaOpenAdd()" style="font-size:.9rem;padding:8px 20px;">
             ＋ เพิ่มรายการครู
         </button>
         <button class="py-btn py-btn-adm" id="btn-add-admin" onclick="admOpenModal()" style="font-size:.9rem;padding:8px 20px;display:none;">
@@ -497,26 +668,35 @@ endif;
     <?php else: ?>
     <table class="py-table">
         <thead><tr>
-            <th>#</th><th>ชื่อครู</th><th>ช่วงวันที่</th><th>สัปดาห์/วัน</th>
-            <th style="text-align:center;">คาบสอน</th>
-            <th style="text-align:right;">ค่าจ้าง/คาบ (฿)</th>
+            <th>#</th><th>ชื่อครู</th><th>ช่วงวันที่ / สัปดาห์</th>
+            <th>หน้าที่ (จำนวน × ค่าจ้าง)</th>
             <th style="text-align:right;">รวม (฿)</th>
             <th style="text-align:center;">สถานะ</th>
             <th style="text-align:center;">จัดการ</th>
         </tr></thead>
         <tbody>
         <?php $n = 1; foreach ($records as $r):
-            $total  = $r['sessions_count'] * $r['pay_rate'];
+            $roles  = json_decode($r['roles_json'] ?? '', true) ?: [];
+            $total  = !empty($roles) ? (float)$r['total_amount'] : (float)$r['sessions_count'] * (float)$r['pay_rate'];
             $isPaid = $r['status'] === 'paid';
             $period = ($r['date_from'] && $r['date_to']) ? fmtDate($r['date_from']).' – '.fmtDate($r['date_to']) : '—';
         ?>
         <tr>
             <td style="color:#9ca3af;font-size:.78rem;"><?= $n++ ?></td>
             <td style="font-weight:600;"><?= htmlspecialchars($r['teacher_name']) ?></td>
-            <td style="font-size:.82rem;color:#6b7280;"><?= $period ?></td>
-            <td style="font-size:.82rem;"><?= htmlspecialchars($r['week_label'] ?? '—') ?></td>
-            <td style="text-align:center;font-weight:700;color:#1A2A5E;"><?= $r['sessions_count'] ?></td>
-            <td style="text-align:right;"><?= number_format($r['pay_rate'], 2) ?></td>
+            <td style="font-size:.8rem;color:#6b7280;">
+                <?= $period ?>
+                <?php if ($r['week_label']): ?><div style="margin-top:2px;"><?= htmlspecialchars($r['week_label']) ?></div><?php endif; ?>
+            </td>
+            <td style="font-size:.8rem;">
+                <?php if (!empty($roles)): ?>
+                    <?php foreach ($roles as $role): ?>
+                    <span class="role-chip"><?= htmlspecialchars($role['role']) ?> <?= $role['count'] ?>×<?= number_format($role['rate'],0) ?>฿</span>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <span class="role-chip"><?= $r['sessions_count'] ?> คาบ ×<?= number_format($r['pay_rate'],0) ?>฿</span>
+                <?php endif; ?>
+            </td>
             <td style="text-align:right;font-weight:700;color:#065f46;"><?= number_format($total, 2) ?></td>
             <td style="text-align:center;">
                 <?php if ($isPaid): ?>
@@ -543,6 +723,18 @@ endif;
                         <button type="submit" class="py-btn py-btn-outline" style="padding:4px 10px;font-size:.75rem;">↩ ยกเลิก</button>
                     </form>
                     <?php endif; ?>
+                    <button class="py-btn py-btn-warning" style="padding:4px 10px;font-size:.75rem;"
+                        onclick='pyOpenEdit(<?= htmlspecialchars(json_encode([
+                            "id"             => $r["id"],
+                            "teacher_name"   => $r["teacher_name"],
+                            "sessions_count" => $r["sessions_count"],
+                            "pay_rate"       => $r["pay_rate"],
+                            "roles"          => json_decode($r["roles_json"] ?? "[]", true) ?: [],
+                            "date_from"      => $r["date_from"]  ?? "",
+                            "date_to"        => $r["date_to"]    ?? "",
+                            "week_label"     => $r["week_label"] ?? "",
+                            "note"           => $r["note"]       ?? "",
+                        ])) ?>)'>✏️ แก้ไข</button>
                     <form method="post" style="display:inline;" onsubmit="return confirm('ลบรายการนี้?')">
                         <input type="hidden" name="action"     value="delete_entry">
                         <input type="hidden" name="payroll_id" value="<?= $r['id'] ?>">
@@ -557,8 +749,7 @@ endif;
         </tbody>
         <tfoot>
             <tr style="background:#f8fafc;font-weight:700;">
-                <td colspan="4" style="text-align:right;padding:10px 12px;color:#374151;">รวมทั้งหมด</td>
-                <td style="text-align:center;color:#1A2A5E;"><?= array_sum(array_column($records,'sessions_count')) ?></td>
+                <td colspan="3" style="text-align:right;padding:10px 12px;color:#374151;">รวมทั้งหมด</td>
                 <td></td>
                 <td style="text-align:right;color:#065f46;font-size:1rem;"><?= number_format($grandTotal, 2) ?> ฿</td>
                 <td colspan="2"></td>
@@ -683,6 +874,16 @@ endif;
                         <button type="submit" class="py-btn py-btn-outline" style="padding:4px 10px;font-size:.75rem;">↩ ยกเลิก</button>
                     </form>
                     <?php endif; ?>
+                    <button class="py-btn py-btn-warning" style="padding:4px 10px;font-size:.75rem;"
+                        onclick='admOpenEdit(<?= htmlspecialchars(json_encode([
+                            "id"         => $r["id"],
+                            "admin_name" => $r["admin_name"],
+                            "roles"      => json_decode($r["roles_json"] ?? "[]", true) ?: [],
+                            "date_from"  => $r["date_from"]  ?? "",
+                            "date_to"    => $r["date_to"]    ?? "",
+                            "week_label" => $r["week_label"] ?? "",
+                            "note"       => $r["note"]       ?? "",
+                        ])) ?>)'>✏️ แก้ไข</button>
                     <form method="post" style="display:inline;" onsubmit="return confirm('ลบรายการนี้?')">
                         <input type="hidden" name="action"          value="delete_admin">
                         <input type="hidden" name="admin_payroll_id" value="<?= $r['id'] ?>">
@@ -709,6 +910,52 @@ endif;
 </div><!-- end tab-admin -->
 
 </div><!-- end main -->
+
+<!-- ─── Teacher Edit Modal ────────────────────────────────────────────────── -->
+<div id="py-modal-edit" class="py-modal-bg">
+<div class="py-modal" style="max-width:560px;">
+    <h3 style="margin:0 0 1rem;font-size:1.1rem;font-weight:700;">✏️ แก้ไขรายการค่าจ้างครู</h3>
+    <form method="post">
+        <input type="hidden" name="action"     value="edit_entry">
+        <input type="hidden" name="q"          value="/modules/7j/payroll.php">
+        <input type="hidden" name="tab"        value="teacher">
+        <input type="hidden" name="payroll_id" id="py-edit-id">
+
+        <div class="py-fg">
+            <label>ชื่อครู *</label>
+            <input type="text" name="teacher_name" id="py-edit-tname" required>
+        </div>
+        <div class="py-grid2">
+            <div class="py-fg"><label>ตั้งแต่วันที่</label><input type="date" name="date_from" id="py-edit-dfrom"></div>
+            <div class="py-fg"><label>ถึงวันที่</label><input type="date" name="date_to" id="py-edit-dto"></div>
+        </div>
+        <div class="py-fg">
+            <label>สัปดาห์/วัน</label>
+            <input type="text" name="week_label" id="py-edit-week">
+        </div>
+        <!-- Role rows -->
+        <div class="py-fg">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <label style="margin:0;">หน้าที่และค่าจ้าง *</label>
+                <button type="button" onclick="teaEditAddRow()"
+                    style="padding:3px 12px;background:#dbeafe;color:#1A2A5E;border:none;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;">
+                    ＋ เพิ่มหน้าที่
+                </button>
+            </div>
+            <div class="adm-role-header">
+                <span>หน้าที่</span><span style="text-align:center;">ค่าจ้าง (฿)</span><span style="text-align:center;">จำนวน</span><span style="text-align:right;">รวม</span><span></span>
+            </div>
+            <div id="tea-edit-rows"></div>
+        </div>
+        <div class="py-total-calc" id="py-edit-total">รวมทั้งหมด: 0 ฿</div>
+        <div class="py-fg"><label>หมายเหตุ</label><textarea name="note" id="py-edit-note" rows="2"></textarea></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+            <button type="button" class="py-btn py-btn-outline" onclick="pyCloseModal('edit')">ยกเลิก</button>
+            <button type="submit" class="py-btn py-btn-warning">💾 บันทึกการแก้ไข</button>
+        </div>
+    </form>
+</div>
+</div>
 
 <!-- ─── Teacher Add Modal ─────────────────────────────────────────────────── -->
 <div id="py-modal-add" class="py-modal-bg">
@@ -740,26 +987,82 @@ endif;
             <label>สัปดาห์/วัน <span style="font-weight:400;color:#9ca3af;">(เช่น สัปดาห์ที่ 23 วันจันทร์)</span></label>
             <input type="text" name="week_label" placeholder="เช่น สัปดาห์ที่ 23 (จันทร์ 10-06-2026)">
         </div>
-        <div class="py-grid2">
-            <div class="py-fg">
-                <label>จำนวนคาบสอน *
+        <!-- Role rows -->
+        <div class="py-fg">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <label style="margin:0;">หน้าที่และค่าจ้าง *</label>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
                     <button type="button" onclick="pyFetchSessions()"
-                        style="margin-left:6px;padding:1px 8px;font-size:.72rem;background:#dbeafe;color:#1e40af;border:none;border-radius:5px;cursor:pointer;">
-                        🔄 ดึงจากระบบ
+                        style="padding:3px 10px;background:#dbeafe;color:#1e40af;border:none;border-radius:6px;font-size:.75rem;font-weight:700;cursor:pointer;">
+                        🔄 ดึงคาบจากระบบ
                     </button>
-                </label>
-                <input type="number" name="sessions_count" id="py-add-sess" min="0" value="0" oninput="pyCalcTotal()" required>
+                    <button type="button" onclick="teaAddRow()"
+                        style="padding:3px 10px;background:#dbeafe;color:#1A2A5E;border:none;border-radius:6px;font-size:.75rem;font-weight:700;cursor:pointer;">
+                        ＋ เพิ่มหน้าที่
+                    </button>
+                    <button type="button" onclick="pySaveRateTemplate()"
+                        style="padding:3px 10px;background:#dcfce7;color:#065f46;border:none;border-radius:6px;font-size:.75rem;font-weight:700;cursor:pointer;"
+                        title="บันทึกอัตราค่าจ้างนี้ไว้ใช้ครั้งต่อไป">
+                        💾 บันทึกค่าจ้าง
+                    </button>
+                </div>
             </div>
-            <div class="py-fg">
-                <label>ค่าจ้าง/คาบ (฿) *</label>
-                <input type="number" name="pay_rate" id="py-add-rate" min="0" step="0.01" value="0" oninput="pyCalcTotal()" required>
+            <div class="adm-role-header">
+                <span>หน้าที่</span><span style="text-align:center;">ค่าจ้าง (฿)</span><span style="text-align:center;">จำนวน</span><span style="text-align:right;">รวม</span><span></span>
             </div>
+            <div id="tea-add-rows"></div>
         </div>
-        <div class="py-total-calc" id="py-total-display">รวม: 0 × 0 = 0 ฿</div>
+        <div class="py-total-calc" id="tea-add-total">รวมทั้งหมด: 0 ฿</div>
         <div class="py-fg"><label>หมายเหตุ</label><textarea name="note" rows="2" placeholder="ถ้ามี..."></textarea></div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
             <button type="button" class="py-btn py-btn-outline" onclick="pyCloseModal('add')">ยกเลิก</button>
             <button type="submit" class="py-btn py-btn-primary">บันทึก</button>
+        </div>
+    </form>
+</div>
+</div>
+
+<!-- ─── Admin Edit Modal ──────────────────────────────────────────────────── -->
+<div id="py-modal-admin-edit" class="py-modal-bg">
+<div class="py-modal" style="max-width:600px;">
+    <h3 style="margin:0 0 1rem;font-size:1.1rem;font-weight:700;color:#5b21b6;">✏️ แก้ไขรายการค่าจ้างแอดมิน</h3>
+    <form method="post">
+        <input type="hidden" name="action"          value="edit_admin">
+        <input type="hidden" name="q"               value="/modules/7j/payroll.php">
+        <input type="hidden" name="tab"             value="admin">
+        <input type="hidden" name="admin_payroll_id" id="adm-edit-id">
+
+        <div class="py-fg">
+            <label>ชื่อแอดมิน *</label>
+            <input type="text" name="admin_name" id="adm-edit-name" required>
+        </div>
+        <div class="py-grid2">
+            <div class="py-fg"><label>ตั้งแต่วันที่</label><input type="date" name="adm_date_from" id="adm-edit-dfrom"></div>
+            <div class="py-fg"><label>ถึงวันที่</label><input type="date" name="adm_date_to" id="adm-edit-dto"></div>
+        </div>
+        <div class="py-fg">
+            <label>สัปดาห์/วัน</label>
+            <input type="text" name="adm_week_label" id="adm-edit-week">
+        </div>
+        <!-- Role rows -->
+        <div class="py-fg">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <label style="margin:0;">หน้าที่และค่าจ้าง *</label>
+                <button type="button" onclick="admEditAddRow()"
+                    style="padding:3px 10px;background:#ede9fe;color:#5b21b6;border:none;border-radius:6px;font-size:.75rem;font-weight:700;cursor:pointer;">
+                    ＋ เพิ่มหน้าที่
+                </button>
+            </div>
+            <div class="adm-role-header">
+                <span>หน้าที่</span><span style="text-align:center;">ค่าจ้าง (฿)</span><span style="text-align:center;">จำนวน</span><span style="text-align:right;">รวม</span><span></span>
+            </div>
+            <div id="adm-edit-rows"></div>
+        </div>
+        <div class="py-total-calc" id="adm-edit-total" style="background:#f5f3ff;color:#5b21b6;">รวมทั้งหมด: 0 ฿</div>
+        <div class="py-fg"><label>หมายเหตุ</label><textarea name="adm_note" id="adm-edit-note" rows="2"></textarea></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+            <button type="button" class="py-btn py-btn-outline" onclick="pyCloseModal('admin-edit')">ยกเลิก</button>
+            <button type="submit" class="py-btn py-btn-warning">💾 บันทึกการแก้ไข</button>
         </div>
     </form>
 </div>
@@ -776,7 +1079,9 @@ endif;
 
         <div class="py-fg">
             <label>ชื่อแอดมิน *</label>
-            <input type="text" name="admin_name" placeholder="กรอกชื่อแอดมิน..." required>
+            <input type="text" name="admin_name" id="adm-name-input"
+                placeholder="กรอกชื่อแอดมิน..."
+                oninput="admLoadRateDebounce(this.value)" required>
         </div>
 
         <div class="py-grid2">
@@ -792,10 +1097,17 @@ endif;
         <div class="py-fg">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                 <label style="margin:0;">หน้าที่และค่าจ้าง *</label>
-                <button type="button" onclick="admAddRow()"
-                    style="padding:3px 12px;background:#ede9fe;color:#5b21b6;border:none;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;">
-                    ＋ เพิ่มหน้าที่
-                </button>
+                <div style="display:flex;gap:6px;">
+                    <button type="button" onclick="admAddRow()"
+                        style="padding:3px 10px;background:#ede9fe;color:#5b21b6;border:none;border-radius:6px;font-size:.75rem;font-weight:700;cursor:pointer;">
+                        ＋ เพิ่มหน้าที่
+                    </button>
+                    <button type="button" onclick="admSaveRateTemplate()"
+                        style="padding:3px 10px;background:#dcfce7;color:#065f46;border:none;border-radius:6px;font-size:.75rem;font-weight:700;cursor:pointer;"
+                        title="บันทึกอัตราค่าจ้างนี้ไว้ใช้ครั้งต่อไป">
+                        💾 บันทึกค่าจ้าง
+                    </button>
+                </div>
             </div>
             <div class="adm-role-header">
                 <span>หน้าที่</span><span style="text-align:center;">ค่าจ้าง (฿)</span><span style="text-align:center;">จำนวน</span><span style="text-align:right;">รวม</span><span></span>
@@ -827,7 +1139,7 @@ function pyShowTab(tab) {
     document.getElementById('btn-add-admin').style.display   = tab === 'admin'   ? '' : 'none';
 }
 
-// ─── Teacher modal ─────────────────────────────────────────────────────────────
+// ─── Modal helpers ─────────────────────────────────────────────────────────────
 var pyTeacherData = <?= json_encode(array_column($teachers, null, 'id')) ?>;
 function pyOpenModal(id)  { document.getElementById('py-modal-'+id).classList.add('open'); }
 function pyCloseModal(id) { document.getElementById('py-modal-'+id).classList.remove('open'); }
@@ -841,15 +1153,120 @@ function pySelectTeacher(sel) {
     var opt = sel.options[sel.selectedIndex];
     document.getElementById('py-add-tid').value   = opt.value || '';
     document.getElementById('py-add-tname').value = opt.value ? (opt.dataset.name || '') : '';
+    if (opt.value) pyLoadRateTemplate(opt.value, opt.dataset.name || '');
 }
-function pyCalcTotal() {
-    var sess  = parseFloat(document.getElementById('py-add-sess').value) || 0;
-    var rate  = parseFloat(document.getElementById('py-add-rate').value) || 0;
-    var total = sess * rate;
-    document.getElementById('py-total-display').textContent =
-        'รวม: ' + sess + ' × ' + rate.toLocaleString('th-TH') + ' = ' +
-        total.toLocaleString('th-TH', {minimumFractionDigits:2}) + ' ฿';
+function pyLoadRateTemplate(tid, tname) {
+    var url = '?q=/modules/7j/payroll.php&fetch_rate_template=1&tid='+encodeURIComponent(tid)+'&tname='+encodeURIComponent(tname);
+    fetch(url).then(function(r){ return r.json(); }).then(function(data) {
+        if (data.rates && data.rates.length > 0) {
+            teaAddCount = 0;
+            document.getElementById('tea-add-rows').innerHTML = '';
+            data.rates.forEach(function(r) { teaAddRow(r.role, r.rate, ''); });
+            teaAddCalc();
+        }
+    }).catch(function(){});
 }
+function pySaveRateTemplate() {
+    var tid   = document.getElementById('py-add-tid').value;
+    var tname = document.getElementById('py-add-tname').value.trim();
+    if (!tname) { alert('กรุณาระบุชื่อครูก่อนบันทึก'); return; }
+    var fd = new FormData();
+    fd.append('action', 'save_rate_template');
+    fd.append('q', '/modules/7j/payroll.php');
+    fd.append('teacher_id', tid);
+    fd.append('teacher_name', tname);
+    document.querySelectorAll('#tea-add-rows input[name="role_name[]"]').forEach(function(el){ fd.append('role_name[]', el.value); });
+    document.querySelectorAll('#tea-add-rows input[name="role_rate[]"]').forEach(function(el){ fd.append('role_rate[]', el.value); });
+    fetch('?q=/modules/7j/payroll.php', {method:'POST', body:fd})
+        .then(function(r){ return r.json(); })
+        .then(function(data){ alert(data.msg || (data.ok ? '✅ บันทึกสำเร็จ' : '❌ เกิดข้อผิดพลาด')); })
+        .catch(function(){ alert('❌ เกิดข้อผิดพลาด'); });
+}
+
+// ─── Teacher Add: dynamic role rows ───────────────────────────────────────────
+var teaAddCount = 0;
+function teaOpenAdd() {
+    teaAddCount = 0;
+    document.getElementById('tea-add-rows').innerHTML = '';
+    teaAddRow();
+    document.getElementById('tea-add-total').textContent = 'รวมทั้งหมด: 0 ฿';
+    pyOpenModal('add');
+}
+function teaAddRow(roleName, rate, count) {
+    teaAddCount++;
+    var idx = teaAddCount;
+    var row = document.createElement('div');
+    row.className = 'adm-role-row'; row.id = 'tea-add-row-'+idx;
+    row.innerHTML =
+        '<input type="text"   name="role_name[]"  placeholder="หน้าที่ เช่น คาบสอน" value="'+(roleName||'')+'" oninput="teaAddCalc()" required>'+
+        '<input type="number" name="role_rate[]"  placeholder="ค่าจ้าง" min="0" step="0.01" value="'+(rate||'')+'" oninput="teaAddCalc()" style="text-align:right;">'+
+        '<input type="number" name="role_count[]" placeholder="จำนวน"   min="0" value="'+(count||1)+'" oninput="teaAddCalc()" style="text-align:center;">'+
+        '<span class="adm-sub" id="tea-add-sub-'+idx+'">0 ฿</span>'+
+        (idx>1 ? '<button type="button" onclick="document.getElementById(\'tea-add-row-'+idx+'\').remove();teaAddCalc();" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:.8rem;cursor:pointer;font-weight:700;">✕</button>'
+               : '<span></span>');
+    document.getElementById('tea-add-rows').appendChild(row);
+    teaAddCalc();
+}
+function teaAddCalc() {
+    var grand = 0;
+    document.querySelectorAll('#tea-add-rows .adm-role-row').forEach(function(row) {
+        var r = parseFloat(row.querySelector('input[name="role_rate[]"]').value)||0;
+        var c = parseFloat(row.querySelector('input[name="role_count[]"]').value)||0;
+        var sub = r*c; grand += sub;
+        var s = row.querySelector('[id^="tea-add-sub-"]');
+        if(s) s.textContent = sub.toLocaleString('th-TH',{minimumFractionDigits:0})+' ฿';
+    });
+    document.getElementById('tea-add-total').textContent = 'รวมทั้งหมด: '+grand.toLocaleString('th-TH',{minimumFractionDigits:2})+' ฿';
+}
+
+// ─── Teacher Edit: dynamic role rows ──────────────────────────────────────────
+var teaEditCount = 0;
+function pyOpenEdit(d) {
+    document.getElementById('py-edit-id').value    = d.id;
+    document.getElementById('py-edit-tname').value = d.teacher_name  || '';
+    document.getElementById('py-edit-dfrom').value = d.date_from     || '';
+    document.getElementById('py-edit-dto').value   = d.date_to       || '';
+    document.getElementById('py-edit-week').value  = d.week_label    || '';
+    document.getElementById('py-edit-note').value  = d.note          || '';
+    teaEditCount = 0;
+    document.getElementById('tea-edit-rows').innerHTML = '';
+    var roles = d.roles || [];
+    if (roles.length === 0 && d.sessions_count > 0) {
+        roles = [{role:'คาบสอน', rate: d.pay_rate, count: d.sessions_count}];
+    }
+    if (roles.length === 0) roles = [{}];
+    roles.forEach(function(r) { teaEditAddRow(r.role, r.rate, r.count); });
+    teaEditCalc();
+    pyOpenModal('edit');
+}
+function teaEditAddRow(roleName, rate, count) {
+    teaEditCount++;
+    var idx = teaEditCount;
+    var row = document.createElement('div');
+    row.className = 'adm-role-row'; row.id = 'tea-edit-row-'+idx;
+    row.innerHTML =
+        '<input type="text"   name="role_name[]"  placeholder="หน้าที่ เช่น คาบสอน" value="'+(roleName||'')+'" oninput="teaEditCalc()" required>'+
+        '<input type="number" name="role_rate[]"  placeholder="ค่าจ้าง" min="0" step="0.01" value="'+(rate||'')+'" oninput="teaEditCalc()" style="text-align:right;">'+
+        '<input type="number" name="role_count[]" placeholder="จำนวน"   min="0" value="'+(count||1)+'" oninput="teaEditCalc()" style="text-align:center;">'+
+        '<span class="adm-sub" id="tea-edit-sub-'+idx+'">0 ฿</span>'+
+        (idx>1 ? '<button type="button" onclick="document.getElementById(\'tea-edit-row-'+idx+'\').remove();teaEditCalc();" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:.8rem;cursor:pointer;font-weight:700;">✕</button>'
+               : '<span></span>');
+    document.getElementById('tea-edit-rows').appendChild(row);
+    teaEditCalc();
+}
+function teaEditCalc() {
+    var grand = 0;
+    document.querySelectorAll('#tea-edit-rows .adm-role-row').forEach(function(row) {
+        var r = parseFloat(row.querySelector('input[name="role_rate[]"]').value)||0;
+        var c = parseFloat(row.querySelector('input[name="role_count[]"]').value)||0;
+        var sub = r*c; grand += sub;
+        var s = row.querySelector('[id^="tea-edit-sub-"]');
+        if(s) s.textContent = sub.toLocaleString('th-TH',{minimumFractionDigits:0})+' ฿';
+    });
+    document.getElementById('py-edit-total').textContent = 'รวมทั้งหมด: '+grand.toLocaleString('th-TH',{minimumFractionDigits:2})+' ฿';
+}
+
+// ─── Fetch sessions → fill first row count ────────────────────────────────────
 function pyFetchSessions() {
     var tid   = document.getElementById('py-add-tid').value;
     var dfrom = document.getElementById('py-add-dfrom').value;
@@ -861,19 +1278,100 @@ function pyFetchSessions() {
     fetch(url).then(function(r){ return r.text(); }).then(function(html) {
         var doc = (new DOMParser()).parseFromString(html, 'text/html');
         var val = doc.getElementById('py-fetched-sessions');
-        if (val) { document.getElementById('py-add-sess').value = val.dataset.count || 0; pyCalcTotal(); }
-        else     { alert('ไม่พบข้อมูลคาบสอนในช่วงวันที่นี้'); }
+        if (val) {
+            var cnt = val.dataset.count || 0;
+            var firstCount = document.querySelector('#tea-add-rows input[name="role_count[]"]');
+            var firstRole  = document.querySelector('#tea-add-rows input[name="role_name[]"]');
+            if (firstCount) { firstCount.value = cnt; if (firstRole && !firstRole.value) firstRole.value = 'คาบสอน'; teaAddCalc(); }
+        } else { alert('ไม่พบข้อมูลคาบสอนในช่วงวันที่นี้'); }
     }).catch(function(){ alert('เกิดข้อผิดพลาด กรุณาลองใหม่'); });
 }
 
 // ─── Admin modal ───────────────────────────────────────────────────────────────
 var admRowCount = 0;
+var _admLoadTimer = null;
 function admOpenModal() {
     admRowCount = 0;
     document.getElementById('adm-rows-container').innerHTML = '';
-    admAddRow(); // เริ่มต้น 1 แถว
+    document.getElementById('adm-name-input').value = '';
+    admAddRow();
     document.getElementById('adm-total-display').textContent = 'รวมทั้งหมด: 0 ฿';
     document.getElementById('py-modal-admin').classList.add('open');
+}
+function admLoadRateDebounce(aname) {
+    clearTimeout(_admLoadTimer);
+    if (!aname.trim()) return;
+    _admLoadTimer = setTimeout(function() { admLoadRateTemplate(aname.trim()); }, 600);
+}
+function admLoadRateTemplate(aname) {
+    var url = '?q=/modules/7j/payroll.php&fetch_admin_rate_template=1&aname='+encodeURIComponent(aname);
+    fetch(url).then(function(r){ return r.json(); }).then(function(data) {
+        if (data.rates && data.rates.length > 0) {
+            admRowCount = 0;
+            document.getElementById('adm-rows-container').innerHTML = '';
+            data.rates.forEach(function(r) { admAddRow(r.role, r.rate, ''); });
+            admCalcTotal();
+        }
+    }).catch(function(){});
+}
+// ─── Admin Edit modal ─────────────────────────────────────────────────────────
+var admEditCount = 0;
+function admOpenEdit(d) {
+    document.getElementById('adm-edit-id').value    = d.id;
+    document.getElementById('adm-edit-name').value  = d.admin_name  || '';
+    document.getElementById('adm-edit-dfrom').value = d.date_from   || '';
+    document.getElementById('adm-edit-dto').value   = d.date_to     || '';
+    document.getElementById('adm-edit-week').value  = d.week_label  || '';
+    document.getElementById('adm-edit-note').value  = d.note        || '';
+    admEditCount = 0;
+    document.getElementById('adm-edit-rows').innerHTML = '';
+    var roles = d.roles || [];
+    if (roles.length === 0) roles = [{}];
+    roles.forEach(function(r) { admEditAddRow(r.role, r.rate, r.count); });
+    admEditCalc();
+    pyOpenModal('admin-edit');
+}
+function admEditAddRow(roleName, rate, count) {
+    admEditCount++;
+    var idx = admEditCount;
+    var row = document.createElement('div');
+    row.className = 'adm-role-row'; row.id = 'adm-edit-row-'+idx;
+    row.innerHTML =
+        '<input type="text"   name="role_name[]"  placeholder="หน้าที่ เช่น ผู้ดูแลระบบ" value="'+(roleName||'')+'" oninput="admEditCalc()" required>'+
+        '<input type="number" name="role_rate[]"  placeholder="ค่าจ้าง" min="0" step="0.01" value="'+(rate||'')+'" oninput="admEditCalc()" style="text-align:right;">'+
+        '<input type="number" name="role_count[]" placeholder="จำนวน"   min="0" value="'+(count||1)+'" oninput="admEditCalc()" style="text-align:center;">'+
+        '<span class="adm-sub" id="adm-edit-sub-'+idx+'">0 ฿</span>'+
+        (idx>1 ? '<button type="button" onclick="document.getElementById(\'adm-edit-row-'+idx+'\').remove();admEditCalc();" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:.8rem;cursor:pointer;font-weight:700;">✕</button>'
+               : '<span></span>');
+    document.getElementById('adm-edit-rows').appendChild(row);
+    admEditCalc();
+}
+function admEditCalc() {
+    var grand = 0;
+    document.querySelectorAll('#adm-edit-rows .adm-role-row').forEach(function(row) {
+        var r = parseFloat(row.querySelector('input[name="role_rate[]"]').value)||0;
+        var c = parseFloat(row.querySelector('input[name="role_count[]"]').value)||0;
+        var sub = r*c; grand += sub;
+        var s = row.querySelector('[id^="adm-edit-sub-"]');
+        if(s) s.textContent = sub.toLocaleString('th-TH',{minimumFractionDigits:0})+' ฿';
+    });
+    document.getElementById('adm-edit-total').textContent =
+        'รวมทั้งหมด: '+grand.toLocaleString('th-TH',{minimumFractionDigits:2})+' ฿';
+}
+
+function admSaveRateTemplate() {
+    var aname = (document.getElementById('adm-name-input').value || '').trim();
+    if (!aname) { alert('กรุณาระบุชื่อแอดมินก่อนบันทึก'); return; }
+    var fd = new FormData();
+    fd.append('action', 'save_admin_rate_template');
+    fd.append('q', '/modules/7j/payroll.php');
+    fd.append('admin_name', aname);
+    document.querySelectorAll('#adm-rows-container input[name="role_name[]"]').forEach(function(el){ fd.append('role_name[]', el.value); });
+    document.querySelectorAll('#adm-rows-container input[name="role_rate[]"]').forEach(function(el){ fd.append('role_rate[]', el.value); });
+    fetch('?q=/modules/7j/payroll.php', {method:'POST', body:fd})
+        .then(function(r){ return r.json(); })
+        .then(function(data){ alert(data.msg || (data.ok ? '✅ บันทึกสำเร็จ' : '❌ เกิดข้อผิดพลาด')); })
+        .catch(function(){ alert('❌ เกิดข้อผิดพลาด'); });
 }
 function admCloseModal() {
     document.getElementById('py-modal-admin').classList.remove('open');
