@@ -20,7 +20,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
             $nowHM  = (int)$nowDT->format('H') * 60 + (int)$nowDT->format('i');
             [$h,$m] = array_map('intval', explode(':', ($sch['time_start'] ?? '00:00').':00'));
             $slotHM = $h * 60 + $m;
-            if ($nowHM >= 720 && $h < 12) $slotHM += 720;
             if ($sch['schedule_type'] === 'one_time' && ($sch['specific_date'] ?? '')) {
                 $slotDate = new DateTime($sch['specific_date'], new DateTimeZone('Asia/Bangkok'));
                 $todayDT  = new DateTime('today',  new DateTimeZone('Asia/Bangkok'));
@@ -227,14 +226,14 @@ $csTotalH = csToPx($CS_END, $CS_START, $CS_PX_HOUR);
 $csNow    = (new DateTime('now', new DateTimeZone('Asia/Bangkok')))->format('H:i');
 $csNowPx  = ($csNow>=$CS_START && $csNow<=$CS_END) ? csToPx($csNow,$CS_START,$CS_PX_HOUR) : -1;
 
-// ระบบเก็บเวลาแบบ 12h ไม่มี AM/PM — hours 1-11 = PM, 0 = AM, 12 = noon PM
+// เวลาเก็บแบบ 24h จริง — แปลงเป็น 12h AM/PM
 function fmtTimePM(string $t): string {
     if ($t === '') return '';
     [$h, $m] = array_pad(explode(':', $t), 2, '00');
     $h = (int)$h;
-    if ($h === 0)  return '12:' . $m . ' AM';
-    if ($h === 12) return '12:' . $m . ' PM';
-    return $h . ':' . $m . ' PM';
+    $suffix = $h >= 12 ? 'PM' : 'AM';
+    $h12    = $h % 12 ?: 12;
+    return $h12 . ':' . $m . ' ' . $suffix;
 }
 
 // ─── Thailand time helper ─────────────────────────────────────────────────────
@@ -243,7 +242,6 @@ function csIsSlotReady(string $day, string $time, string $type='weekly', string 
     $thHM   = (int)$thNow->format('H') * 60 + (int)$thNow->format('i');
     [$h,$m] = array_map('intval', explode(':', $time.':00'));
     $slotHM = $h * 60 + $m;
-    if ($thHM >= 720 && $h < 12) $slotHM += 720;
     if ($type === 'one_time' && $specificDate) {
         $slotDate = new DateTime($specificDate, new DateTimeZone('Asia/Bangkok'));
         $today    = new DateTime('today', new DateTimeZone('Asia/Bangkok'));

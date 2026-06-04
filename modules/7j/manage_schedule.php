@@ -59,13 +59,13 @@ if ($action === 'add' || $action === 'edit') {
     } else {
         // เงื่อนไขที่ 3: ห้ามบันทึกวัน/เวลาที่ผ่านมาแล้ว (one_time เท่านั้น)
         if ($stype === 'one_time' && $action === 'add') {
-            $nowTs = time();
+            $nowDT = new DateTime('now', new DateTimeZone('Asia/Bangkok'));
             foreach ($sdates as $d) {
                 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
                     $msg = 'error|รูปแบบวันที่ไม่ถูกต้อง: '.$d; break;
                 }
-                $dtTs = strtotime($d . ' ' . $ts . ':00');
-                if ($dtTs === false || $dtTs <= $nowTs) {
+                $slotDT = new DateTime($d . ' ' . $ts, new DateTimeZone('Asia/Bangkok'));
+                if ($slotDT <= $nowDT) {
                     $msg = 'error|วันที่ '.$d.' เวลา '.$ts.' ผ่านมาแล้ว — ไม่สามารถบันทึกตารางได้'; break;
                 }
             }
@@ -127,7 +127,6 @@ if ($action === 'add' || $action === 'edit') {
                     $nowHM  = (int)$nowDT->format('H') * 60 + (int)$nowDT->format('i');
                     [$eh,$em] = array_map('intval', explode(':', ($sch['time_start'] ?? '00:00').':00'));
                     $slotHM = $eh*60+$em;
-                    if ($nowHM >= 720 && $eh < 12) $slotHM += 720;
                     if ($sch['schedule_type'] === 'one_time' && ($sch['specific_date'] ?? '')) {
                         $editLocked = ($sch['specific_date'] < date('Y-m-d'))
                                    || ($sch['specific_date'] === date('Y-m-d') && $nowHM >= $slotHM);
@@ -215,6 +214,16 @@ if ($action === 'add' || $action === 'edit') {
         $connection2->query("UPDATE sevenj_schedule SET status='$st' WHERE id=$id");
         $msg = 'success|เปลี่ยนสถานะเป็น "'.$st.'" สำเร็จ';
     }
+}
+
+// เวลาเก็บแบบ 24h จริง — แปลงเป็น 12h AM/PM
+function fmtTimePM(string $t): string {
+    if ($t === '') return '';
+    [$h, $m] = array_pad(explode(':', $t), 2, '00');
+    $h = (int)$h;
+    $suffix = $h >= 12 ? 'PM' : 'AM';
+    $h12    = $h % 12 ?: 12;
+    return $h12 . ':' . $m . ' ' . $suffix;
 }
 
 // ─── Fetch data ───────────────────────────────────────────────────────────────
@@ -427,7 +436,7 @@ function msInitials($name) {
                 <?php else: ?>
                 <span class="ms-badge-day"><?= $dayLbl ?></span>
                 <?php endif; ?>
-                <?php if ($s['time_start']): ?><span style="font-size:.8rem;color:#374151;">⏰ <?= htmlspecialchars($s['time_start']) ?><?= $s['time_end']?' – '.$s['time_end']:'' ?></span><?php endif; ?>
+                <?php if ($s['time_start']): ?><span style="font-size:.8rem;color:#374151;">⏰ <?= fmtTimePM($s['time_start']) ?><?= $s['time_end']?' – '.fmtTimePM($s['time_end']):'' ?></span><?php endif; ?>
             </div>
             <div style="font-size:.78rem;color:#6b7280;margin-top:4px;display:flex;align-items:center;gap:6px;">
                 คาบ <?= $done ?>/<?= $tot ?> (เหลือ <?= $remain ?>)
@@ -479,7 +488,6 @@ function msInitials($name) {
                 $tsArr = $s['time_start'] ? array_map('intval', explode(':', $s['time_start'].':00')) : null;
                 if ($tsArr) {
                     $sMins = $tsArr[0]*60+$tsArr[1];
-                    if ($nowMins >= 720 && $tsArr[0] < 12) $sMins += 720;
                     if ($isOne) {
                         if (($s['specific_date'] ?? '') < $todayStr)                             $canEdit = false;
                         elseif (($s['specific_date'] ?? '') === $todayStr && $nowMins >= $sMins) $canEdit = false;

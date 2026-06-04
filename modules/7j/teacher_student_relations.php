@@ -148,14 +148,14 @@ asort($allTeacherNames);
 
 $dayThMap = ['Sunday'=>'อาทิตย์','Monday'=>'จันทร์','Tuesday'=>'อังคาร','Wednesday'=>'พุธ','Thursday'=>'พฤหัสบดี','Friday'=>'ศุกร์','Saturday'=>'เสาร์'];
 
-// ระบบเก็บเวลาแบบ 12h ไม่มี AM/PM — hours 1-11 = PM, 0 = AM, 12 = noon PM
+// เวลาเก็บแบบ 24h จริง — แปลงเป็น 12h AM/PM
 function fmtTimePM(string $t): string {
     if ($t === '') return '';
     [$h, $m] = array_pad(explode(':', $t), 2, '00');
     $h = (int)$h;
-    if ($h === 0)  return '12:' . $m . ' AM';
-    if ($h === 12) return '12:' . $m . ' PM';
-    return $h . ':' . $m . ' PM';
+    $suffix = $h >= 12 ? 'PM' : 'AM';
+    $h12    = $h % 12 ?: 12;
+    return $h12 . ':' . $m . ' ' . $suffix;
 }
 
 // Stats — นับหลัง merge เพื่อได้จำนวน unique students

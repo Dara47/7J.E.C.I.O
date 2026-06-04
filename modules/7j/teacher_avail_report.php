@@ -60,7 +60,6 @@ function tarIsExpired(string $slotDate, string $endTime, string $todayStr, int $
     if ($slotDate === $todayStr && $endTime !== '') {
         [$eh, $em] = array_pad(explode(':', $endTime), 2, '00');
         $endMins = (int)$eh * 60 + (int)$em;
-        if ($nowMins >= 720 && (int)$eh < 12) $endMins += 720;
         return $nowMins > $endMins;
     }
     return false;

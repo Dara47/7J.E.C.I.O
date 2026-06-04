@@ -47,12 +47,12 @@ echo "=== 7J Auto Class Log ===\n";
 echo "Run: {$runAt}\n";
 echo "Day: {$dayName} | Time: {$now}\n\n";
 
-// ─── ดึง schedules ที่ตรงเงื่อนไข (ไม่กรอง time_end ใน SQL เพราะ PM normalization) ──
+// ─── ดึง schedules ที่ตรงเงื่อนไข (ไม่กรอง time_end ใน SQL เพราะ type cast) ──────
 //   1. status = active
 //   2. completed_classes < total_classes
 //   3. ประเภท weekly → day_of_week ตรงกับวันนี้
 //      ประเภท one_time → specific_date = วันนี้
-//   4. time_end ผ่านไปแล้ว → ตรวจใน PHP พร้อม PM normalization
+//   4. time_end ผ่านไปแล้ว → ตรวจใน PHP (เวลา 24h จริง)
 $stmtSched = $pdo->prepare("
     SELECT * FROM sevenj_schedule
     WHERE status = 'active'
@@ -68,15 +68,12 @@ $stmtSched = $pdo->prepare("
 $stmtSched->execute([':dayName' => $dayName, ':today' => $today]);
 $allCandidates = $stmtSched->fetchAll();
 
-// ─── PM normalization: กรอง time_end ที่ผ่านไปแล้วจริงๆ ─────────────────────
-// ระบบเก็บเวลาแบบ 12h ไม่มี AM/PM (เช่น "01:45" หมายถึง 13:45)
-// ถ้าเวลาปัจจุบันเป็น PM (>= 720 นาที) และ slot hour < 12 → บวก 720 (12 ชม.)
+// ─── กรอง time_end ที่ผ่านไปแล้ว (เวลา 24h จริง) ────────────────────────────
 $nowMins = (int)date('H') * 60 + (int)date('i');
 $schedules = [];
 foreach ($allCandidates as $sch) {
     [$eh, $em] = array_map('intval', explode(':', $sch['time_end'].':00'));
     $endMins = $eh * 60 + $em;
-    if ($nowMins >= 720 && $eh < 12) $endMins += 720;   // PM normalization
     if ($nowMins >= $endMins) {
         $schedules[] = $sch;
     }

@@ -230,15 +230,14 @@ if ($hasFilter) {
 $dayTh = ['Monday'=>'จันทร์','Tuesday'=>'อังคาร','Wednesday'=>'พุธ',
           'Thursday'=>'พฤหัสบดี','Friday'=>'ศุกร์','Saturday'=>'เสาร์','Sunday'=>'อาทิตย์'];
 
-// schedule: hours 1-11 = 12h PM, hour > 12 = 24h จริง (เช่น 18:10 = 6:10 PM)
+// เวลาเก็บแบบ 24h จริง — แปลงเป็น 12h AM/PM
 function fmtTimePM(string $t): string {
     if ($t === '') return '';
     [$h, $m] = array_pad(explode(':', $t), 2, '00');
     $h = (int)$h;
-    if ($h === 0)  return '12:' . $m . ' AM';
-    if ($h === 12) return '12:' . $m . ' PM';
-    if ($h > 12)   return ($h - 12) . ':' . $m . ' PM';
-    return $h . ':' . $m . ' PM';
+    $suffix = $h >= 12 ? 'PM' : 'AM';
+    $h12    = $h % 12 ?: 12;
+    return $h12 . ':' . $m . ' ' . $suffix;
 }
 function ini1($n){ return mb_strtoupper(mb_substr($n??'?',0,1)); }
 function ini2s($n){ $w=preg_split('/\s+/',trim($n??'')); $s=''; foreach($w as $x){if($x)$s.=mb_strtoupper(mb_substr($x,0,1));} return mb_substr($s,0,2)?:'?'; }

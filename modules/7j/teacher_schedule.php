@@ -148,14 +148,14 @@ foreach ($byTeacher as &$tStudents) {
 unset($tStudents);
 uasort($byTeacher, fn($a,$b) => count($b) - count($a));
 
-// ระบบเก็บเวลาแบบ 12h ไม่มี AM/PM — hours 1-11 = PM, 0 = AM, 12 = noon PM
+// เวลาเก็บแบบ 24h จริง — แปลงเป็น 12h AM/PM
 function fmtTimePM(string $t): string {
     if ($t === '') return '';
     [$h, $m] = array_pad(explode(':', $t), 2, '00');
     $h = (int)$h;
-    if ($h === 0)  return '12:' . $m . ' AM';
-    if ($h === 12) return '12:' . $m . ' PM';
-    return $h . ':' . $m . ' PM';
+    $suffix = $h >= 12 ? 'PM' : 'AM';
+    $h12    = $h % 12 ?: 12;
+    return $h12 . ':' . $m . ' ' . $suffix;
 }
 
 // ─── Thailand time helper ─────────────────────────────────────────────────────
@@ -164,7 +164,6 @@ function isSlotReady(string $day, string $time, string $type='weekly', string $s
     $thHM   = (int)$thNow->format('H') * 60 + (int)$thNow->format('i');
     [$h,$m] = array_map('intval', explode(':', $time.':00'));
     $slotHM = $h * 60 + $m;
-    if ($thHM >= 720 && $h < 12) $slotHM += 720;
     if ($type === 'one_time' && $specificDate) {
         $slotDate = new DateTime($specificDate, new DateTimeZone('Asia/Bangkok'));
         $today    = new DateTime('today', new DateTimeZone('Asia/Bangkok'));
@@ -186,13 +185,10 @@ function getSlotStatus(string $day, string $timeStart, string $timeEnd, string $
     $nowMins = (int)$thNow->format('H') * 60 + (int)$thNow->format('i');
     [$sh, $sm] = array_map('intval', explode(':', $timeStart . ':00'));
     $startMins = $sh * 60 + $sm;
-    // เวลาปัจจุบัน PM และ slot < 12 → ถือเป็น PM (+12 ชม.)
-    if ($nowMins >= 720 && $sh < 12) $startMins += 720;
     if ($nowMins < $startMins) return 'waiting';
     if ($timeEnd) {
         [$eh, $em] = array_map('intval', explode(':', $timeEnd . ':00'));
         $endMins = $eh * 60 + $em;
-        if ($nowMins >= 720 && $eh < 12) $endMins += 720;
         if ($nowMins <= $endMins) return 'active';
     }
     return 'finished';
