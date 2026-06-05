@@ -527,6 +527,9 @@ foreach ($studentSummary as $ss) {
             <!-- สถานะ + action buttons: แสดงต่อคอร์สเมื่อเรียนครบคาบในแถวนี้ -->
             <td style="text-align:center;white-space:nowrap;">
                 <?php if ($scDone >= $scTotal && $scTotal > 0):
+                    if ($isOld && (int)($stuData['active_remaining'] ?? 0) > 0): ?>
+                <span class="sr-badge" style="background:#d1fae5;color:#065f46;">✅ ต่อคอร์สแล้ว</span>
+                    <?php else:
                     $ls = $lastSchByStudent[$s['id']] ?? null;
                     $stuTotal = (int)($stuData['totalClasses'] ?? 0);
                     $stuDone  = (int)($stuData['logged_sessions'] ?? 0);
@@ -536,7 +539,7 @@ foreach ($studentSummary as $ss) {
                         'specificDate'=>$ls['specific_date']??'','timeStart'=>$ls['time_start']??'',
                         'timeEnd'=>$ls['time_end']??'','course'=>$ls['course']??'',
                         'oldTotal'=>$stuTotal,'oldDone'=>$stuDone], JSON_HEX_QUOT|JSON_HEX_APOS);
-                ?>
+                    ?>
                 <span class="sr-badge" style="background:#fef3c7;color:#92400e;display:block;margin-bottom:4px;">🏆 เรียนครบแล้ว</span>
                 <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center;">
                     <button onclick="openRenewModal(<?= htmlspecialchars($rd,ENT_QUOTES) ?>)"
@@ -544,11 +547,12 @@ foreach ($studentSummary as $ss) {
                     <button onclick="confirmNoRenewDirect('<?= htmlspecialchars($s['id'],ENT_QUOTES) ?>','<?= htmlspecialchars($s['displayName'],ENT_QUOTES) ?>')"
                         style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;padding:3px 8px;font-size:.7rem;font-weight:700;cursor:pointer;">❌ ไม่ต่อ</button>
                 </div>
+                    <?php endif; ?>
                 <?php elseif (!$isOld): ?>
-                <?php if ($learnedToday): ?>
+                <?php if ($learnedToday && (int)$sc['completed_classes'] > 0): ?>
                 <span class="sr-badge" style="background:#dcfce7;color:#166534;">✅ เรียนแล้ว</span>
                 <?php else: ?>
-                <span class="sr-badge" style="background:#dbeafe;color:#1e40af;">รอเรียน</span>
+                <span class="sr-badge" style="background:#dbeafe;color:#1e40af;">⏳ รอเรียน</span>
                 <?php endif; ?>
                 <?php endif; ?>
             </td>
@@ -719,27 +723,28 @@ function fmt24AmPm(t) {
 }
 
 function openRenewModal(d) {
+    // คงไว้เฉพาะชื่อ+รหัสนักเรียน — ล้างข้อมูลอื่นทั้งหมดเพื่อเริ่มใหม่
     document.getElementById('rn-sid').value          = d.id;
     document.getElementById('rn-sname').value        = d.name;
     document.getElementById('rn-scode').value        = d.code;
     document.getElementById('rn-sname-disp').value   = d.name;
     document.getElementById('rn-scode-disp').value   = d.code;
     document.getElementById('rn-title').textContent  = d.name;
-    document.getElementById('rn-teacher-id').value   = d.teacherId || '';
-    document.getElementById('rn-tname-hidden').value = d.teacherName || '';
-    document.getElementById('rn-stype').value        = d.scheduleType || 'weekly';
-    document.getElementById('rn-day').value          = d.dayOfWeek  || 'Monday';
-    document.getElementById('rn-date').value         = d.specificDate || '';
-    document.getElementById('rn-tstart').value       = d.timeStart  || '';
-    document.getElementById('rn-tend').value         = d.timeEnd    || '';
-    document.getElementById('rn-course').value       = d.course     || '';
+    document.getElementById('rn-teacher-id').value   = '';
+    document.getElementById('rn-tname-hidden').value = '';
+    document.getElementById('rn-stype').value        = 'weekly';
+    document.getElementById('rn-day').value          = 'Monday';
+    document.getElementById('rn-date').value         = '';
+    document.getElementById('rn-tstart').value       = '';
+    document.getElementById('rn-tend').value         = '';
+    document.getElementById('rn-course').value       = '';
     document.getElementById('rn-total').value        = '';
     document.getElementById('rn-old-summary').innerHTML =
         '📋 คอร์สที่ผ่านมา: เรียนครบ <strong>' + d.oldDone + '/' + d.oldTotal + ' คาบ</strong>'
         + (d.course ? ' &nbsp;|&nbsp; คอร์ส: <strong>' + escHtml(d.course) + '</strong>' : '')
         + (d.teacherName ? ' &nbsp;|&nbsp; ครู: <strong>' + escHtml(d.teacherName) + '</strong>' : '');
     rnToggleType();
-    rnShowAvail(d.teacherId);
+    rnShowAvail(''); // ไม่ pre-select ครู → ซ่อน availability
     document.getElementById('modal-renew').style.display = 'block';
     document.getElementById('rn-total').focus();
 }

@@ -133,9 +133,9 @@ $todaySchedules = $connection2->query("
          WHERE c.schedule_id = s.id AND c.completed_date = '".addslashes($today)."') AS logged_today,
         (SELECT c.session_number FROM sevenj_class_completions c
          WHERE c.schedule_id = s.id AND c.completed_date = '".addslashes($today)."' LIMIT 1) AS today_session,
-        (SELECT COUNT(*) FROM sevenj_class_completions c WHERE c.student_id = s.student_id) AS total_done_all,
+        (SELECT COUNT(*) FROM sevenj_class_completions c WHERE c.schedule_id = s.id) AS total_done_all,
         (SELECT COUNT(*) FROM sevenj_class_completions c2
-         WHERE c2.student_id = s.student_id AND c2.completed_date = '".addslashes($today)."') AS logged_today_student
+         WHERE c2.schedule_id = s.id AND c2.completed_date = '".addslashes($today)."') AS logged_today_student
     FROM sevenj_schedule s
     LEFT JOIN sevenj_students st ON st.id = s.student_id
     LEFT JOIN sevenj_teachers t  ON t.id  = s.teacher_ref_id

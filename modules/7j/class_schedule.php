@@ -210,13 +210,13 @@ if (!empty($sortedTimes)) {
 function csToPx(string $t, string $s, int $px): int {
     [$sh,$sm] = array_map('intval', explode(':', $s));
     [$th,$tm] = array_map('intval', explode(':', $t.':00'));
-    return (int)(($th-$sh)*60+($tm-$sm))*$px/60;
+    return (int)((($th-$sh)*60+($tm-$sm))*$px/60);
 }
 function csDuration(string $s, string $e, int $px): int {
     if (!$e || $e<=$s) return $px;
     [$sh,$sm]=array_map('intval',explode(':',$s.':00'));
     [$eh,$em]=array_map('intval',explode(':',$e.':00'));
-    return max(24,(int)(($eh-$sh)*60+($em-$sm))*$px/60);
+    return max(24,(int)((($eh-$sh)*60+($em-$sm))*$px/60));
 }
 $csHours = [];
 [$csSH] = array_map('intval', explode(':', $CS_START));
