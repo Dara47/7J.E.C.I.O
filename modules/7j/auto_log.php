@@ -100,7 +100,7 @@ $nowTime  = $_now->format('H:i');
 
 // ─── บันทึกวันนี้ — อ้างอิงจาก sevenj_schedule (มุมมองตารางเรียน) ──────────────
 $todayLogs = $connection2->query("
-    SELECT sch.id AS sch_id, sch.total_classes, sch.schedule_type,
+    SELECT sch.id AS sch_id, sch.student_id, sch.total_classes, sch.schedule_type,
         sch.day_of_week, sch.specific_date, sch.time_start, sch.time_end,
         sch.note AS sch_note,
         COALESCE(st.displayName, sch.student_name) AS disp_student,
@@ -108,7 +108,9 @@ $todayLogs = $connection2->query("
         COUNT(c.id) AS logged_today,
         MAX(c.note) AS log_note,
         MIN(c.completed_date) AS log_date,
-        (SELECT COUNT(*) FROM sevenj_class_completions c2 WHERE c2.schedule_id = sch.id) AS total_done_all
+        (SELECT COUNT(*) FROM sevenj_class_completions c2 WHERE c2.schedule_id = sch.id) AS total_done_all,
+        (SELECT COUNT(*) FROM sevenj_class_completions c3 WHERE c3.student_id = sch.student_id) AS total_done_all_student,
+        (SELECT COUNT(*) FROM sevenj_class_completions c4 WHERE c4.student_id = sch.student_id AND c4.completed_date = '".addslashes($today)."') AS logged_today_student
     FROM sevenj_schedule sch
     LEFT JOIN sevenj_students st ON st.id = sch.student_id
     LEFT JOIN sevenj_teachers  t ON t.id  = sch.teacher_ref_id
@@ -131,7 +133,9 @@ $todaySchedules = $connection2->query("
          WHERE c.schedule_id = s.id AND c.completed_date = '".addslashes($today)."') AS logged_today,
         (SELECT c.session_number FROM sevenj_class_completions c
          WHERE c.schedule_id = s.id AND c.completed_date = '".addslashes($today)."' LIMIT 1) AS today_session,
-        (SELECT COUNT(*) FROM sevenj_class_completions c WHERE c.student_id = s.student_id) AS total_done_all
+        (SELECT COUNT(*) FROM sevenj_class_completions c WHERE c.student_id = s.student_id) AS total_done_all,
+        (SELECT COUNT(*) FROM sevenj_class_completions c2
+         WHERE c2.student_id = s.student_id AND c2.completed_date = '".addslashes($today)."') AS logged_today_student
     FROM sevenj_schedule s
     LEFT JOIN sevenj_students st ON st.id = s.student_id
     LEFT JOIN sevenj_teachers t  ON t.id  = s.teacher_ref_id
@@ -216,25 +220,25 @@ function fmtTimePM(string $t): string {
         </thead>
         <tbody>
         <?php
-        // rank offset: นับ unlogged slot ที่ผ่านมาแล้วต่อนักเรียนแต่ละคน (เรียงตาม time_start)
+        // rank: tracked per student — logged rank และ unlogged rank แยกกัน
+        $stuLoggedRank   = [];
         $stuUnloggedRank = [];
-        foreach ($todaySchedules as $ts2) {
-            if ((int)$ts2['logged_today'] === 0) {
-                $k = $ts2['student_id'] ?: ($ts2['disp_student'].'|'.$ts2['student_code'] ?? '');
-                $stuUnloggedRank[$k] = 0;
-            }
-        }
         ?>
         <?php foreach ($todaySchedules as $s):
-            $loggedToday = (int)$s['logged_today'] > 0;
-            $stuKey = $s['student_id'] ?: ($s['disp_student'].'|'.$s['student_code'] ?? '');
+            $loggedToday    = (int)$s['logged_today'] > 0;
+            $stuKey         = $s['student_id'] ?: ($s['disp_student'].'|'.($s['student_code'] ?? ''));
+            $totalDoneAll   = (int)$s['total_done_all'];
+            $loggedTodayStu = (int)$s['logged_today_student'];
+            $prevDone       = $totalDoneAll - $loggedTodayStu; // completions ก่อนวันนี้
+
             if ($loggedToday) {
-                // บันทึกแล้ว = ใช้ total_done_all จริง
-                $thisSess = (int)$s['total_done_all'];
+                // บันทึกแล้ว: prevDone + ลำดับ logged slot วันนี้ (1st=1, 2nd=2...)
+                $stuLoggedRank[$stuKey] = ($stuLoggedRank[$stuKey] ?? 0) + 1;
+                $thisSess = $prevDone + $stuLoggedRank[$stuKey];
             } else {
-                // ยังไม่บันทึก = total_done + ลำดับ unlogged slot นี้สำหรับนักเรียนคนนี้วันนี้
+                // ยังไม่บันทึก: prevDone + logged วันนี้ + ลำดับ unlogged slot
                 $stuUnloggedRank[$stuKey] = ($stuUnloggedRank[$stuKey] ?? 0) + 1;
-                $thisSess = (int)$s['total_done_all'] + $stuUnloggedRank[$stuKey];
+                $thisSess = $prevDone + $loggedTodayStu + $stuUnloggedRank[$stuKey];
             }
             $timeStarted = $nowTime >= $s['time_start'];
         ?>
@@ -312,7 +316,13 @@ function fmtTimePM(string $t): string {
             <tr><th>นักเรียน</th><th>ครู</th><th>เวลา (ตาราง)</th><th style="text-align:center;">ประเภทคอร์ส / วันที่</th><th style="text-align:center;">เรียนแล้ว/ทั้งหมด</th><th>หมายเหตุ</th></tr>
         </thead>
         <tbody>
-        <?php foreach ($todayLogs as $lg): ?>
+        <?php $lgLoggedRank = []; ?>
+        <?php foreach ($todayLogs as $lg):
+            $lgKey    = $lg['student_id'] ?: $lg['disp_student'];
+            $lgLoggedRank[$lgKey] = ($lgLoggedRank[$lgKey] ?? 0) + 1;
+            $lgPrevDone  = (int)$lg['total_done_all_student'] - (int)$lg['logged_today_student'];
+            $lgSessNum   = $lgPrevDone + $lgLoggedRank[$lgKey];
+        ?>
         <tr>
             <td style="font-weight:600;"><?= htmlspecialchars($lg['disp_student']) ?></td>
             <td style="color:#6b7280;"><?= htmlspecialchars($lg['disp_teacher']) ?></td>
@@ -327,7 +337,7 @@ function fmtTimePM(string $t): string {
                 </span>
                 <div style="font-size:.7rem;color:#9ca3af;margin-top:2px;"><?= $logDateFmt ?></div>
             </td>
-            <td style="text-align:center;"><span class="al-badge" style="background:#dbeafe;color:#1e40af;"><?= (int)$lg['total_done_all'] ?>/<?= (int)$lg['total_classes'] ?></span></td>
+            <td style="text-align:center;"><span class="al-badge" style="background:#dbeafe;color:#1e40af;"><?= $lgSessNum ?>/<?= (int)$lg['total_classes'] ?></span></td>
             <td style="font-size:.75rem;color:#9ca3af;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($lg['log_note'] ?? '—') ?></td>
         </tr>
         <?php endforeach; ?>
