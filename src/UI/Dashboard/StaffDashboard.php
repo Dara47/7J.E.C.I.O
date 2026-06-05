@@ -108,8 +108,9 @@ class StaffDashboard implements OutputableInterface, ContainerAwareInterface
         $pdo = $this->db->getConnection();
 
         // ── ดึงจาก sevenj_* tables ──────────────────────────────────────────────
-        $todayDow       = date('l');
-        $todayStr       = date('Y-m-d');
+        $_bkkStat       = new \DateTime('now', new \DateTimeZone('Asia/Bangkok'));
+        $todayDow       = $_bkkStat->format('l');
+        $todayStr       = $_bkkStat->format('Y-m-d');
         $totalStudents  = (int)$pdo->query("SELECT COUNT(*) FROM sevenj_students WHERE status='active'")->fetchColumn();
         $totalTeachers  = (int)$pdo->query("SELECT COUNT(*) FROM sevenj_teachers WHERE status='active'")->fetchColumn();
         $pendingLeave   = (int)$pdo->query("SELECT COUNT(*) FROM sevenj_leave_requests WHERE status='pending'")->fetchColumn();
@@ -180,9 +181,10 @@ class StaffDashboard implements OutputableInterface, ContainerAwareInterface
     {
         $pdo    = $this->db->getConnection();
         $absURL = $this->session->get('absoluteURL') ?? '';
-        $today  = date('Y-m-d');
-        $dayName = date('l');
-        $nowTime = date('H:i');
+        $_bkk    = new \DateTime('now', new \DateTimeZone('Asia/Bangkok'));
+        $today   = $_bkk->format('Y-m-d');
+        $dayName = $_bkk->format('l');
+        $nowTime = $_bkk->format('H:i');
 
         // ─── ตารางสอนวันนี้ ──────────────────────────────────────────────
         $todaySchedules = $pdo->query("
@@ -231,8 +233,8 @@ class StaffDashboard implements OutputableInterface, ContainerAwareInterface
             LIMIT 8
         ")->fetchAll(\PDO::FETCH_ASSOC);
 
-        // แปลงเวลาปัจจุบันเป็นนาที เพื่อใช้เปรียบเทียบแบบ numeric (หลีกเลี่ยง string comparison ผิดพลาด)
-        $nowMins = (int)date('H') * 60 + (int)date('i');
+        // แปลงเวลาปัจจุบันเป็นนาที (Asia/Bangkok)
+        $nowMins = (int)$_bkk->format('H') * 60 + (int)$_bkk->format('i');
 
         // นับสถานะการเรียนวันนี้
         $cntWait = 0; $cntActive = 0; $cntDone = 0; $cntOver = 0;
