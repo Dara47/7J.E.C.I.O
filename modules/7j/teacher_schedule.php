@@ -131,6 +131,11 @@ foreach ($rows as $r) {
     );
     // completed_classes = COUNT จริงจาก sevenj_class_completions (ไม่ใช่ SUM slots)
     $byTeacher[$t][$stuKey]['completed_classes'] = (int)$r['actual_completed'];
+    // ถ้า row นี้ยัง active (เรียนยังไม่ครบ) → เก็บไว้แสดง progress คอร์สปัจจุบัน
+    if ((int)$r['completed_classes'] < (int)$r['total_classes'] && (int)$r['total_classes'] > 0) {
+        $byTeacher[$t][$stuKey]['active_total'] = (int)$r['total_classes'];
+        $byTeacher[$t][$stuKey]['active_done']  = (int)$r['completed_classes'];
+    }
     // เก็บ slot ย่อย
     $byTeacher[$t][$stuKey]['slots'][] = [
         'id'            => $r['id'],
@@ -302,7 +307,10 @@ $totalDone     = array_sum(array_column($rows, 'completed_classes'));
     </div>
     <div id="<?= $cardId ?>" style="padding:10px 14px;">
         <?php foreach ($tStudents as $s):
-            $done = (int)$s['completed_classes'] >= (int)$s['total_classes'];
+            // ใช้ progress จาก active enrollment ถ้ามี (กรณีต่อคอร์สแล้ว)
+            $dispDone  = isset($s['active_done'])  ? $s['active_done']  : (int)$s['completed_classes'];
+            $dispTotal = isset($s['active_total']) ? $s['active_total'] : (int)$s['total_classes'];
+            $done = $dispDone >= $dispTotal && $dispTotal > 0;
             // เรียงลำดับ slots ตามเวลา
             usort($s['slots'], fn($a,$b) => strcmp($a['time'], $b['time']));
         ?>
@@ -315,7 +323,7 @@ $totalDone     = array_sum(array_column($rows, 'completed_classes'));
                 <span style="font-weight:700;color:#374151;font-size:.88rem;"><?= htmlspecialchars($s['_disp_student']) ?></span>
                 <span class="ts-badge"><?= htmlspecialchars($s['_disp_code']) ?></span>
                 <span style="color:<?= $done?'#059669':'#6b7280' ?>;font-size:.72rem;font-weight:700;">
-                    <?= (int)$s['completed_classes'] ?>/<?= (int)$s['total_classes'] ?>
+                    <?= $dispDone ?>/<?= $dispTotal ?>
                     <?php if ($done): ?><span style="color:#059669;">✓ ครบแล้ว</span><?php endif; ?>
                 </span>
             </div>

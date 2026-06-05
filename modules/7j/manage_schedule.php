@@ -38,6 +38,11 @@ if ($action === 'add' || $action === 'edit') {
     $day    = trim($_POST['day_of_week']   ?? '');
     $ts     = trim($_POST['time_start']    ?? '');
     $te     = trim($_POST['time_end']      ?? '');
+    // per-date times (one_time) — fallback to global if empty
+    $tsList = array_values(array_map('trim', (array)($_POST['time_starts'] ?? [])));
+    $teList = array_values(array_map('trim', (array)($_POST['time_ends']   ?? [])));
+    if (!$ts && !empty($tsList[0])) $ts = $tsList[0];
+    if (!$te && !empty($teList[0])) $te = $teList[0];
     $sdates = array_filter(array_map('trim', (array)($_POST['specific_dates'] ?? [])));
     $sdate  = $sdates ? reset($sdates) : '';
     $course = trim($_POST['course']        ?? '');
@@ -57,16 +62,30 @@ if ($action === 'add' || $action === 'edit') {
     } elseif ($stype === 'weekly' && !$day) {
         $msg = 'error|กรุณาเลือกวันในสัปดาห์';
     } else {
-        // เงื่อนไขที่ 3: ห้ามบันทึกวัน/เวลาที่ผ่านมาแล้ว (one_time เท่านั้น)
+        // เงื่อนไขที่ 3: ห้ามบันทึกวัน/เวลาที่ผ่านมาแล้ว + ตรวจวันตรงกับ day_of_week (one_time เท่านั้น)
         if ($stype === 'one_time' && $action === 'add') {
+            $DAYS_TH_MAP = ['Monday'=>'จันทร์','Tuesday'=>'อังคาร','Wednesday'=>'พุธ',
+                'Thursday'=>'พฤหัสบดี','Friday'=>'ศุกร์','Saturday'=>'เสาร์','Sunday'=>'อาทิตย์'];
             $nowDT = new DateTime('now', new DateTimeZone('Asia/Bangkok'));
-            foreach ($sdates as $d) {
+            $sdatesIdx = array_values($sdates);
+            foreach ($sdatesIdx as $i => $d) {
                 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
                     $msg = 'error|รูปแบบวันที่ไม่ถูกต้อง: '.$d; break;
                 }
-                $slotDT = new DateTime($d . ' ' . $ts, new DateTimeZone('Asia/Bangkok'));
+                // ตรวจวันที่ต้องตรงกับ day_of_week ที่เลือก
+                if ($day) {
+                    $dateDow = date('l', strtotime($d));
+                    if (strcasecmp($dateDow, $day) !== 0) {
+                        $thDay = $DAYS_TH_MAP[$day] ?? $day;
+                        $thAct = $DAYS_TH_MAP[$dateDow] ?? $dateDow;
+                        $msg = 'error|วันที่ '.$d.' ตรงกับวัน'.$thAct.' — ไม่ตรงกับวัน'.$thDay.'ที่เลือกไว้'; break;
+                    }
+                }
+                // ตรวจ: ห้ามวันที่ผ่านมาแล้ว
+                $tsI = $tsList[$i] ?? $ts;
+                $slotDT = new DateTime($d . ' ' . ($tsI ?: '00:00'), new DateTimeZone('Asia/Bangkok'));
                 if ($slotDT <= $nowDT) {
-                    $msg = 'error|วันที่ '.$d.' เวลา '.$ts.' ผ่านมาแล้ว — ไม่สามารถบันทึกตารางได้'; break;
+                    $msg = 'error|วันที่ '.$d.' เวลา '.($tsI ?: $ts).' ผ่านมาแล้ว — ไม่สามารถบันทึกตารางได้'; break;
                 }
             }
         }
@@ -88,14 +107,21 @@ if ($action === 'add' || $action === 'edit') {
             if ($stype === 'one_time' && count($sdates) > 1) {
                 // ── เพิ่มหลายวันพร้อมกัน ──
                 $inserted = 0;
-                foreach ($sdates as $d) {
-                    $dQ = q($connection2, $d);
+                $sdatesIdx = array_values($sdates);
+                foreach ($sdatesIdx as $i => $d) {
+                    $dQ   = q($connection2, $d);
+                    $tsI  = !empty($tsList[$i]) ? $tsList[$i] : $ts;
+                    $teI  = !empty($teList[$i]) ? $teList[$i] : $te;
+                    $tsIQ = q($connection2, $tsI);
+                    $teIQ = q($connection2, $teI);
+                    // validate per-date time
+                    if (!$tsI || !$teI || $tsI >= $teI) continue;
                     $connection2->query("INSERT INTO sevenj_schedule
                         (student_id,student_code,student_name,teacher_ref_id,teacher_name,
                          schedule_type,day_of_week,time_start,time_end,specific_date,
                          course,total_classes,completed_classes,note)
                         VALUES ($sidQ,$scodeQ,$snameQ,$tidQ,$tnameQ,
-                        'one_time',$dayQ,$tsQ,$teQ,$dQ,
+                        'one_time',$dayQ,$tsIQ,$teIQ,$dQ,
                         $courseQ,$total,$done,$noteQ)");
                     $inserted++;
                 }
@@ -477,6 +503,9 @@ function msInitials($name) {
                             $rtLabel = '⏳ รอเรียน'; $rtStyle = 'background:#fef3c7;color:#92400e;';
                         }
                     }
+                } elseif ($slotDate > $todayStr || $slotDate === '') {
+                    // วันในอนาคต หรือ weekly ที่ยังไม่ถึงวัน
+                    $rtLabel = '⏳ รอเรียน'; $rtStyle = 'background:#fef3c7;color:#92400e;';
                 }
             }
             // ─── canEdit: ล็อคถ้าถึงเวลาเรียนหรือบันทึกแล้ว ──────────────
@@ -514,9 +543,6 @@ function msInitials($name) {
                 <?php else: ?>
                 <span class="ms-btn-icon" title="ไม่สามารถแก้ไขได้ — ถึงเวลาเรียนหรือบันทึกแล้ว" style="cursor:default;color:#d1d5db;">🔒</span>
                 <?php endif; ?>
-                <button class="ms-btn-icon" title="เปลี่ยนสถานะ" onclick="openStatusModal(<?= (int)$s['id'] ?>,'<?= htmlspecialchars($s['status']) ?>')">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-                </button>
                 <button class="ms-btn-icon" title="ลบ" style="color:#dc2626;" onclick="confirmDelete(<?= (int)$s['id'] ?>,'<?= htmlspecialchars($displayName) ?>')">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                 </button>
@@ -632,7 +658,7 @@ function msInitials($name) {
             </div>
         </div>
         <div id="f-weekly-group" class="ms-form-group">
-            <label>วันในสัปดาห์</label>
+            <label id="f-day-label">วันในสัปดาห์</label>
             <select name="day_of_week" id="f-day">
                 <?php foreach ($DAYS as $i => $d): ?>
                 <option value="<?= $d ?>"><?= $DAYS_TH[$i] ?> (<?= $d ?>)</option>
@@ -648,13 +674,18 @@ function msInitials($name) {
                 </button>
             </div>
             <div id="f-dates-container">
-                <div class="f-date-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+                <div class="f-date-row" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px;">
                     <input type="date" name="specific_dates[]" id="f-date"
-                        style="flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.85rem;box-sizing:border-box;outline:none;">
+                        style="flex:1;min-width:110px;padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">
+                    <input type="time" name="time_starts[]"
+                        style="width:92px;padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;" placeholder="เริ่ม">
+                    <span style="color:#9ca3af;font-size:.8rem;flex-shrink:0;">–</span>
+                    <input type="time" name="time_ends[]"
+                        style="width:92px;padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;" placeholder="จบ">
                 </div>
             </div>
         </div>
-        <div class="ms-grid2">
+        <div id="f-time-group" class="ms-grid2">
             <div class="ms-form-group"><label>เวลาเริ่ม</label><input type="time" name="time_start" id="f-tstart"></div>
             <div class="ms-form-group"><label>เวลาจบ</label><input type="time" name="time_end" id="f-tend"></div>
         </div>
@@ -719,30 +750,6 @@ function msInitials($name) {
 </div>
 </div>
 
-<!-- Change Status Modal -->
-<div id="modal-status" class="ms-modal-bg">
-<div class="ms-modal" style="max-width:360px;">
-    <h3>🔄 เปลี่ยนสถานะ</h3>
-    <form method="post">
-        <input type="hidden" name="action" value="change_status">
-        <input type="hidden" name="q" value="/modules/7j/manage_schedule.php">
-        <?php if ($filterSt): ?><input type="hidden" name="status" value="<?= htmlspecialchars($filterSt) ?>"><?php endif; ?>
-        <input type="hidden" name="id" id="status-id">
-        <div class="ms-form-group" style="margin-bottom:16px;">
-            <label>สถานะใหม่</label>
-            <select name="new_status" id="status-select" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;">
-                <option value="active">🟢 กำลังเรียน (active)</option>
-                <option value="completed">🏆 เรียนครบแล้ว (completed)</option>
-                <option value="cancelled">❌ ยกเลิก (cancelled)</option>
-            </select>
-        </div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;">
-            <button type="button" class="ms-btn ms-btn-outline" onclick="document.getElementById('modal-status').classList.remove('open')">ยกเลิก</button>
-            <button type="submit" class="ms-btn ms-btn-primary">บันทึก</button>
-        </div>
-    </form>
-</div>
-</div>
 
 <!-- Students JSON for JS -->
 <script>
@@ -765,26 +772,37 @@ function closeModal() {
     document.getElementById('modal-title').textContent = '📅 เพิ่มตารางเรียน';
     clearStudent();
     document.getElementById('avail-hint').style.display = 'none';
-    // reset dates container เหลือแค่ 1 row
+    // reset dates container เหลือแค่ 1 row (พร้อม time fields)
     var c = document.getElementById('f-dates-container');
     if (c) {
-        c.innerHTML = '<div class="f-date-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">'
-            + '<input type="date" name="specific_dates[]" id="f-date" style="flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.85rem;box-sizing:border-box;outline:none;">'
+        c.innerHTML = '<div class="f-date-row" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px;">'
+            + '<input type="date" name="specific_dates[]" id="f-date" style="flex:1;min-width:110px;padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
+            + '<input type="time" name="time_starts[]" style="width:92px;padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
+            + '<span style="color:#9ca3af;font-size:.8rem;flex-shrink:0;">–</span>'
+            + '<input type="time" name="time_ends[]" style="width:92px;padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
             + '</div>';
     }
     toggleType();
 }
 
-function addDateSlot(dateVal) {
+function addDateSlot(dateVal, tsVal, teVal) {
     var c = document.getElementById('f-dates-container');
     if (!c) return;
+    // copy time from last row if not specified
+    var lastRow = c.querySelector('.f-date-row:last-child');
+    if (!tsVal && lastRow) tsVal = (lastRow.querySelector('[name="time_starts[]"]') || {}).value || '';
+    if (!teVal && lastRow) teVal = (lastRow.querySelector('[name="time_ends[]"]') || {}).value || '';
     var row = document.createElement('div');
     row.className = 'f-date-row';
-    row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px;';
-    row.innerHTML = '<input type="date" name="specific_dates[]" value="' + (dateVal || '') + '" '
-        + 'style="flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.85rem;box-sizing:border-box;outline:none;">'
+    row.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px;';
+    var inp = 'style="padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;"';
+    row.innerHTML = '<input type="date" name="specific_dates[]" value="' + (dateVal||'') + '" '
+        + 'style="flex:1;min-width:110px;padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
+        + '<input type="time" name="time_starts[]" value="' + (tsVal||'') + '" style="width:92px;' + inp.slice(7) + '>'
+        + '<span style="color:#9ca3af;font-size:.8rem;flex-shrink:0;">–</span>'
+        + '<input type="time" name="time_ends[]" value="' + (teVal||'') + '" style="width:92px;' + inp.slice(7) + '>'
         + '<button type="button" onclick="this.parentNode.remove()" '
-        + 'style="padding:4px 9px;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:.85rem;font-weight:700;flex-shrink:0;" title="ลบวันนี้">✕</button>';
+        + 'style="padding:4px 9px;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:.85rem;font-weight:700;flex-shrink:0;" title="ลบ">✕</button>';
     c.appendChild(row);
     row.querySelector('input').focus();
 }
@@ -792,10 +810,54 @@ document.querySelectorAll('.ms-modal-bg').forEach(function(bg) {
     bg.addEventListener('click', function(e) { if (e.target === bg) bg.classList.remove('open'); });
 });
 
+// อัปเดต badge วันที่เมื่อ user เปลี่ยนวันที่ใน container หรือเปลี่ยน dropdown วัน
+document.getElementById('f-dates-container') && document.getElementById('f-dates-container').addEventListener('change', function(e) {
+    if (e.target && e.target.name === 'specific_dates[]') updateDateDayBadges();
+});
+document.getElementById('f-day') && document.getElementById('f-day').addEventListener('change', updateDateDayBadges);
+
+var DAY_TH_JS = {Monday:'จันทร์',Tuesday:'อังคาร',Wednesday:'พุธ',Thursday:'พฤหัสบดี',Friday:'ศุกร์',Saturday:'เสาร์',Sunday:'อาทิตย์'};
+var DAY_EN_JS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
 function toggleType() {
     var t = document.getElementById('f-stype').value;
-    document.getElementById('f-weekly-group').style.display = t === 'weekly' ? '' : 'none';
+    // แสดง day dropdown เสมอ — ต่างกันที่ label
+    document.getElementById('f-weekly-group').style.display = '';
+    var lbl = document.getElementById('f-day-label');
+    if (lbl) lbl.textContent = t === 'weekly' ? 'วันในสัปดาห์' : '📅 วันที่ต้องตรง (ตรวจสอบวันที่กรอก)';
     document.getElementById('f-date-group').style.display   = t === 'one_time' ? '' : 'none';
+    document.getElementById('f-time-group').style.display   = t === 'weekly'   ? '' : 'none';
+    updateDateDayBadges();
+}
+
+function getDayName(dateStr) {
+    if (!dateStr) return '';
+    var d = new Date(dateStr + 'T00:00:00');
+    return isNaN(d.getTime()) ? '' : DAY_EN_JS[d.getDay()];
+}
+
+function updateDateDayBadges() {
+    var t = (document.getElementById('f-stype') || {}).value;
+    if (t !== 'one_time') return;
+    var selectedDay = (document.getElementById('f-day') || {}).value || '';
+    document.querySelectorAll('#f-dates-container .f-date-row').forEach(function(row) {
+        var di = row.querySelector('[name="specific_dates[]"]');
+        if (!di) return;
+        var badge = row.querySelector('.day-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'day-badge';
+            badge.style.cssText = 'font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:5px;flex-shrink:0;';
+            di.insertAdjacentElement('afterend', badge);
+        }
+        var dn = getDayName(di.value);
+        if (!dn) { badge.textContent = ''; badge.style.display = 'none'; return; }
+        badge.style.display = '';
+        var match = !selectedDay || dn === selectedDay;
+        badge.textContent = (match ? '✓ ' : '✗ ') + DAY_TH_JS[dn];
+        badge.style.background = match ? '#dcfce7' : '#fee2e2';
+        badge.style.color      = match ? '#166534' : '#dc2626';
+    });
 }
 
 // ─── Student Autocomplete (ค้นหาจาก studentsData ที่โหลดแล้ว) ────────────────
@@ -942,7 +1004,9 @@ function showAvailability(teacherId) {
     if (!teacherId || !availData[teacherId] || availData[teacherId].length === 0) {
         hint.style.display = 'none'; return;
     }
-    var slots = availData[teacherId];
+    var slots = availData[teacherId].slice().sort(function(a,b){
+        return (a.start_time||'').localeCompare(b.start_time||'');
+    });
     list.innerHTML = '';
     slots.forEach(function(s) {
         var label = s.type === 'weekly'
@@ -973,19 +1037,26 @@ function applyAvailSlot(s) {
     if (stype === 'weekly') {
         // ตั้งวันในสัปดาห์
         document.getElementById('f-day').value = s.day || 'Monday';
+        // ตั้งเวลา global (weekly)
+        document.getElementById('f-tstart').value = s.start_time || '';
+        document.getElementById('f-tend').value   = s.end_time   || '';
     } else {
         // ใส่วันที่เข้า slot ที่ว่างอยู่ หรือเพิ่ม slot ใหม่
-        var inputs = document.querySelectorAll('#f-dates-container input[name="specific_dates[]"]');
+        var rows   = document.querySelectorAll('#f-dates-container .f-date-row');
         var filled = false;
-        for (var i = 0; i < inputs.length; i++) {
-            if (!inputs[i].value) { inputs[i].value = s.specific_date || ''; filled = true; break; }
+        for (var i = 0; i < rows.length; i++) {
+            var di = rows[i].querySelector('[name="specific_dates[]"]');
+            if (di && !di.value) {
+                di.value = s.specific_date || '';
+                var tsi = rows[i].querySelector('[name="time_starts[]"]');
+                var tei = rows[i].querySelector('[name="time_ends[]"]');
+                if (tsi) tsi.value = s.start_time || '';
+                if (tei) tei.value = s.end_time   || '';
+                filled = true; break;
+            }
         }
-        if (!filled) addDateSlot(s.specific_date || '');
+        if (!filled) addDateSlot(s.specific_date || '', s.start_time || '', s.end_time || '');
     }
-
-    // ตั้งเวลาเริ่ม/จบ
-    document.getElementById('f-tstart').value = s.start_time || '';
-    document.getElementById('f-tend').value   = s.end_time   || '';
 
     // highlight chip ที่เลือก
     document.querySelectorAll('#avail-list span').forEach(function(c) {
@@ -1011,12 +1082,16 @@ function openEditModal(d) {
     document.getElementById('f-course').value        = d.course       || '';
     document.getElementById('f-stype').value         = d.schedule_type|| 'weekly';
     document.getElementById('f-day').value           = d.day_of_week  || 'Monday';
-    // reset dates container to single date for edit
+    // reset dates container to single date for edit (พร้อม time fields)
     var c = document.getElementById('f-dates-container');
     if (c) {
-        c.innerHTML = '<div class="f-date-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">'
+        var ts0 = d.time_start || '', te0 = d.time_end || '';
+        c.innerHTML = '<div class="f-date-row" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px;">'
             + '<input type="date" name="specific_dates[]" id="f-date" value="' + (d.specific_date || '') + '" '
-            + 'style="flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.85rem;box-sizing:border-box;outline:none;">'
+            + 'style="flex:1;min-width:110px;padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
+            + '<input type="time" name="time_starts[]" value="' + ts0 + '" style="width:92px;padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
+            + '<span style="color:#9ca3af;font-size:.8rem;flex-shrink:0;">–</span>'
+            + '<input type="time" name="time_ends[]" value="' + te0 + '" style="width:92px;padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
             + '</div>';
     }
     document.getElementById('f-tstart').value        = d.time_start   || '';
@@ -1042,9 +1117,4 @@ function openLogModal(id, name, sessionNum) {
     document.getElementById('modal-log').classList.add('open');
 }
 
-function openStatusModal(id, currentStatus) {
-    document.getElementById('status-id').value = id;
-    document.getElementById('status-select').value = currentStatus;
-    document.getElementById('modal-status').classList.add('open');
-}
 </script>

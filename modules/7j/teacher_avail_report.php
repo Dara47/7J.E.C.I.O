@@ -7,6 +7,55 @@
 $search = trim($_GET['search'] ?? '');
 $selDay = trim($_GET['day']    ?? '');
 
+// ─── จองเวลา (POST handler) ───────────────────────────────────────────────────
+$bookMsg = '';
+if (($_POST['_action'] ?? '') === 'book_slot') {
+    $bTid    = trim($_POST['b_teacher_id']   ?? '');
+    $bTname  = trim($_POST['b_teacher_name'] ?? '');
+    $bStype  = in_array($_POST['b_stype'] ?? '', ['weekly','one_time']) ? $_POST['b_stype'] : 'one_time';
+    $bDay    = trim($_POST['b_day']          ?? '');
+    $bDate   = trim($_POST['b_date']         ?? '');
+    $bTs     = trim($_POST['b_time_start']   ?? '');
+    $bTe     = trim($_POST['b_time_end']     ?? '');
+    $bSid    = trim($_POST['b_student_id']   ?? '');
+    $bScode  = trim($_POST['b_student_code'] ?? '');
+    $bSname  = trim($_POST['b_student_name'] ?? '');
+    $bCourse = trim($_POST['b_course']       ?? '');
+    $bTotal  = max(1, (int)($_POST['b_total_classes'] ?? 1));
+
+    if (!$bTname || !$bSname || !$bTs || !$bTe) {
+        $bookMsg = 'error|กรุณากรอกข้อมูลให้ครบ (นักเรียน, เวลา)';
+    } elseif ($bStype === 'one_time' && !$bDate) {
+        $bookMsg = 'error|กรุณาระบุวันที่';
+    } elseif ($bStype === 'weekly' && !$bDay) {
+        $bookMsg = 'error|กรุณาระบุวันในสัปดาห์';
+    } else {
+        try {
+            $stmt = $connection2->prepare(
+                "INSERT INTO sevenj_schedule
+                 (student_id,student_code,student_name,teacher_ref_id,teacher_name,
+                  schedule_type,day_of_week,time_start,time_end,specific_date,
+                  course,total_classes,completed_classes,status,note)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,'active','')"
+            );
+            $stmt->execute([
+                $bSid ?: null, $bScode, $bSname, $bTid ?: null, $bTname,
+                $bStype, $bDay, $bTs, $bTe, $bDate ?: null,
+                $bCourse, $bTotal,
+            ]);
+            $bookMsg = 'success|จองเวลาสำเร็จ! ตารางถูกเพิ่มใน ตารางสอน/ตารางเรียน แล้ว';
+        } catch (Exception $e) {
+            $bookMsg = 'error|เกิดข้อผิดพลาด: ' . $e->getMessage();
+        }
+    }
+}
+
+// ─── โหลดนักเรียน (สำหรับ booking modal) ────────────────────────────────────
+$allStudents = $connection2->query("
+    SELECT id, studentCode, displayName, nickname
+    FROM sevenj_students WHERE status='active' ORDER BY displayName
+")->fetchAll(PDO::FETCH_ASSOC);
+
 // ─── ข้อมูลครู ────────────────────────────────────────────────────────────────
 $teachers = $connection2->query("
     SELECT id, displayName, teacherCode, nickname
@@ -271,6 +320,21 @@ $totalFree = $totalAvail - $totalBooked - $totalExpired;
             <?php endforeach; ?>
             <?php else: ?>
             <span class="tar-badge tar-free">🟢 ว่าง</span>
+            <?php
+            $bData = json_encode([
+                'teacher_id'   => $tid,
+                'teacher_name' => $teacher['displayName'],
+                'stype'        => 'weekly',
+                'day'          => $dayEn,
+                'date'         => '',
+                'time_start'   => $av['start_time'],
+                'time_end'     => $av['end_time'],
+            ], JSON_HEX_APOS|JSON_HEX_QUOT);
+            ?>
+            <button onclick='openBookModal(<?= $bData ?>)'
+                style="margin-left:auto;padding:3px 12px;background:#1A2A5E;color:#fff;border:none;border-radius:6px;font-size:.75rem;font-weight:700;cursor:pointer;">
+                📅 จอง
+            </button>
             <?php endif; ?>
             <!-- หมายเหตุ -->
             <?php if ($av['note']): ?>
@@ -313,6 +377,21 @@ $totalFree = $totalAvail - $totalBooked - $totalExpired;
             <?php endforeach; ?>
             <?php else: ?>
             <span class="tar-badge tar-free">🟢 ว่าง</span>
+            <?php
+            $bDataS = json_encode([
+                'teacher_id'   => $tid,
+                'teacher_name' => $teacher['displayName'],
+                'stype'        => 'one_time',
+                'day'          => '',
+                'date'         => $av['specific_date'],
+                'time_start'   => $av['start_time'],
+                'time_end'     => $av['end_time'],
+            ], JSON_HEX_APOS|JSON_HEX_QUOT);
+            ?>
+            <button onclick='openBookModal(<?= $bDataS ?>)'
+                style="margin-left:auto;padding:3px 12px;background:#1A2A5E;color:#fff;border:none;border-radius:6px;font-size:.75rem;font-weight:700;cursor:pointer;">
+                📅 จอง
+            </button>
             <?php endif; ?>
             <?php if ($av['note']): ?><span style="font-size:.72rem;color:#9ca3af;">📝 <?= htmlspecialchars($av['note']) ?></span><?php endif; ?>
         </div>
@@ -351,3 +430,138 @@ if (!empty($noAvailTeachers)): ?>
 <?php endif; ?>
 
 </div>
+
+<!-- ══ Booking Modal ══════════════════════════════════════════════════════════ -->
+<div id="book-modal-bg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;overflow-y:auto;padding:20px;">
+<div style="background:#fff;border-radius:14px;max-width:480px;margin:40px auto;padding:0;box-shadow:0 8px 32px rgba(0,0,0,.18);">
+    <div style="background:linear-gradient(135deg,#1A2A5E,#2563eb);padding:14px 20px;border-radius:14px 14px 0 0;display:flex;align-items:center;justify-content:space-between;">
+        <div style="color:#fff;font-weight:700;font-size:1rem;">📅 จองช่วงเวลาเรียน</div>
+        <button onclick="closeBookModal()" style="background:none;border:none;color:#fff;font-size:1.2rem;cursor:pointer;opacity:.7;">✕</button>
+    </div>
+    <?php if ($bookMsg): [$bType,$bText] = explode('|',$bookMsg,2); ?>
+    <div style="margin:12px 20px 0;padding:9px 14px;border-radius:8px;font-size:.85rem;font-weight:600;
+        background:<?= $bType==='success'?'#dcfce7':'#fee2e2' ?>;color:<?= $bType==='success'?'#166534':'#991b1b' ?>;">
+        <?= htmlspecialchars($bText) ?>
+    </div>
+    <?php endif; ?>
+    <form method="POST" style="padding:18px 20px;">
+        <input type="hidden" name="q"              value="/modules/7j/teacher_avail_report.php">
+        <input type="hidden" name="_action"        value="book_slot">
+        <input type="hidden" name="b_teacher_id"   id="b-tid">
+        <input type="hidden" name="b_teacher_name" id="b-tname">
+        <input type="hidden" name="b_stype"        id="b-stype">
+        <input type="hidden" name="b_day"          id="b-day">
+        <input type="hidden" name="b_date"         id="b-date">
+        <input type="hidden" name="b_time_start"   id="b-tstart">
+        <input type="hidden" name="b_time_end"     id="b-tend">
+        <input type="hidden" name="b_student_id"   id="b-sid">
+        <input type="hidden" name="b_student_code" id="b-scode">
+        <input type="hidden" name="b_student_name" id="b-sname">
+        <!-- Info preview -->
+        <div id="b-info-box" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.82rem;color:#0369a1;"></div>
+        <!-- นักเรียน -->
+        <div style="margin-bottom:12px;position:relative;">
+            <label style="display:block;font-size:.8rem;font-weight:700;color:#374151;margin-bottom:4px;">นักเรียน *</label>
+            <input type="text" id="b-stu-search" placeholder="พิมพ์ชื่อหรือรหัส..." autocomplete="off"
+                oninput="bStuSearch(this.value)"
+                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.88rem;box-sizing:border-box;outline:none;">
+            <div id="b-stu-dd" style="display:none;position:absolute;background:#fff;border:1px solid #e5e7eb;border-radius:8px;max-height:160px;overflow-y:auto;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.1);width:100%;top:100%;left:0;"></div>
+            <div id="b-stu-selected" style="display:none;margin-top:6px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:6px 10px;font-size:.82rem;color:#166534;"></div>
+        </div>
+        <!-- คอร์ส + คาบ -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+            <div>
+                <label style="display:block;font-size:.8rem;font-weight:700;color:#374151;margin-bottom:4px;">คอร์ส</label>
+                <input type="text" name="b_course" placeholder="เช่น Basic, IELTS"
+                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;outline:none;">
+            </div>
+            <div>
+                <label style="display:block;font-size:.8rem;font-weight:700;color:#374151;margin-bottom:4px;">คาบทั้งหมด *</label>
+                <input type="number" name="b_total_classes" value="20" min="1" required
+                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;outline:none;">
+            </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+            <button type="button" onclick="closeBookModal()"
+                style="padding:8px 18px;background:#e5e7eb;color:#374151;border:none;border-radius:8px;font-size:.88rem;font-weight:600;cursor:pointer;">ยกเลิก</button>
+            <button type="submit"
+                style="padding:8px 20px;background:linear-gradient(135deg,#ea580c,#d97706);color:#fff;border:none;border-radius:8px;font-size:.88rem;font-weight:700;cursor:pointer;">
+                ✅ จองเวลา
+            </button>
+        </div>
+    </form>
+</div>
+</div>
+
+<?php
+$studentsJS = [];
+foreach ($allStudents as $st) {
+    $studentsJS[] = ['id'=>$st['id'],'code'=>$st['studentCode'],'name'=>$st['displayName'],'nick'=>$st['nickname']??''];
+}
+$DAYS_TH_JS_MAP = ['Sunday'=>'อาทิตย์','Monday'=>'จันทร์','Tuesday'=>'อังคาร','Wednesday'=>'พุธ','Thursday'=>'พฤหัสบดี','Friday'=>'ศุกร์','Saturday'=>'เสาร์'];
+?>
+<script>
+var _bStudents = <?= json_encode($studentsJS) ?>;
+var _bDaysTh   = <?= json_encode($DAYS_TH_JS_MAP) ?>;
+
+function openBookModal(d) {
+    document.getElementById('b-tid').value    = d.teacher_id   || '';
+    document.getElementById('b-tname').value  = d.teacher_name || '';
+    document.getElementById('b-stype').value  = d.stype        || 'one_time';
+    document.getElementById('b-day').value    = d.day          || '';
+    document.getElementById('b-date').value   = d.date         || '';
+    document.getElementById('b-tstart').value = d.time_start   || '';
+    document.getElementById('b-tend').value   = d.time_end     || '';
+    var dayLabel = d.stype === 'weekly' ? '🗓 ทุกวัน' + (_bDaysTh[d.day]||d.day) : '📅 ' + (d.date||'');
+    document.getElementById('b-info-box').innerHTML =
+        '<strong>👨‍🏫 '+(d.teacher_name||'')+'</strong> &nbsp;|&nbsp; '+dayLabel+
+        ' &nbsp;|&nbsp; ⏰ <strong>'+bFmt12(d.time_start||'')+' – '+bFmt12(d.time_end||'')+'</strong>';
+    document.getElementById('b-stu-search').value = '';
+    document.getElementById('b-stu-dd').style.display = 'none';
+    document.getElementById('b-stu-selected').style.display = 'none';
+    document.getElementById('b-sid').value = '';
+    document.getElementById('b-scode').value = '';
+    document.getElementById('b-sname').value = '';
+    document.getElementById('book-modal-bg').style.display = 'block';
+}
+function closeBookModal() { document.getElementById('book-modal-bg').style.display='none'; }
+function bFmt12(t) {
+    if (!t) return '';
+    var p=t.split(':'),h=parseInt(p[0]),m=p[1]||'00',s=h>=12?'PM':'AM';
+    return (h%12||12)+':'+m+' '+s;
+}
+var _bStuTimer=null;
+function bStuSearch(val) {
+    var dd=document.getElementById('b-stu-dd');
+    clearTimeout(_bStuTimer);
+    val=val.trim();
+    if(!val){dd.style.display='none';return;}
+    _bStuTimer=setTimeout(function(){
+        var q=val.toLowerCase();
+        var res=_bStudents.filter(function(s){
+            return (s.name&&s.name.toLowerCase().indexOf(q)>=0)||(s.code&&s.code.toLowerCase().indexOf(q)>=0)||(s.nick&&s.nick.toLowerCase().indexOf(q)>=0);
+        }).slice(0,8);
+        dd.innerHTML='';
+        if(!res.length){dd.style.display='none';return;}
+        res.forEach(function(s){
+            var item=document.createElement('div');
+            item.style.cssText='padding:8px 12px;cursor:pointer;font-size:.85rem;border-bottom:1px solid #f3f4f6;';
+            item.innerHTML='<strong>'+s.name+'</strong> <span style="color:#9ca3af;font-size:.78rem;">'+s.code+'</span>';
+            item.onmouseover=function(){this.style.background='#f0fdf4';};
+            item.onmouseout=function(){this.style.background='#fff';};
+            item.onclick=function(){
+                document.getElementById('b-sid').value=s.id;
+                document.getElementById('b-scode').value=s.code;
+                document.getElementById('b-sname').value=s.name;
+                document.getElementById('b-stu-search').value=s.name+' ('+s.code+')';
+                document.getElementById('b-stu-selected').textContent='✅ '+s.name+' · '+s.code;
+                document.getElementById('b-stu-selected').style.display='block';
+                dd.style.display='none';
+            };
+            dd.appendChild(item);
+        });
+        dd.style.display='block';
+    },200);
+}
+document.getElementById('book-modal-bg').addEventListener('click',function(e){if(e.target===this)closeBookModal();});
+</script>

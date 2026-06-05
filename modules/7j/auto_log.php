@@ -92,19 +92,23 @@ if (file_exists($lastRunFile)) {
 }
 
 // ─── ข้อมูล schedule ที่จะถูก auto log วันนี้ ──────────────────────────────────
-$dayName  = date('l');
-$today    = date('Y-m-d');
-$nowTime  = date('H:i');
+$_bkk     = new DateTimeZone('Asia/Bangkok');
+$_now     = new DateTime('now', $_bkk);
+$dayName  = $_now->format('l');
+$today    = $_now->format('Y-m-d');
+$nowTime  = $_now->format('H:i');
 
 // ─── บันทึกวันนี้ — อ้างอิงจาก sevenj_schedule (มุมมองตารางเรียน) ──────────────
 $todayLogs = $connection2->query("
     SELECT sch.id AS sch_id, sch.total_classes, sch.schedule_type,
         sch.day_of_week, sch.specific_date, sch.time_start, sch.time_end,
+        sch.note AS sch_note,
         COALESCE(st.displayName, sch.student_name) AS disp_student,
         COALESCE(t.displayName,  sch.teacher_name) AS disp_teacher,
         COUNT(c.id) AS logged_today,
         MAX(c.note) AS log_note,
-        (SELECT COUNT(*) FROM sevenj_class_completions c2 WHERE c2.student_id = sch.student_id) AS total_done_all
+        MIN(c.completed_date) AS log_date,
+        (SELECT COUNT(*) FROM sevenj_class_completions c2 WHERE c2.schedule_id = sch.id) AS total_done_all
     FROM sevenj_schedule sch
     LEFT JOIN sevenj_students st ON st.id = sch.student_id
     LEFT JOIN sevenj_teachers  t ON t.id  = sch.teacher_ref_id
@@ -188,7 +192,7 @@ function fmtTimePM(string $t): string {
 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1.25rem;">
     <div>
         <h2 style="font-size:1.4rem;font-weight:700;color:#1f2937;margin:0;">⚙️ Auto Class Log</h2>
-        <p style="font-size:.85rem;color:#6b7280;margin:4px 0 0;">ระบบตัดคาบเรียนอัตโนมัติ — วันนี้: <?= $dayTH[$dayName]??$dayName ?> <?= date('d/m/Y') ?> เวลา <?= $nowTime ?></p>
+        <p style="font-size:.85rem;color:#6b7280;margin:4px 0 0;">ระบบตัดคาบเรียนอัตโนมัติ — วันนี้: <?= $dayTH[$dayName]??$dayName ?> <?= $_now->format('d/m/Y') ?> เวลา <?= $nowTime ?></p>
     </div>
 </div>
 
@@ -211,12 +215,27 @@ function fmtTimePM(string $t): string {
             </tr>
         </thead>
         <tbody>
+        <?php
+        // rank offset: นับ unlogged slot ที่ผ่านมาแล้วต่อนักเรียนแต่ละคน (เรียงตาม time_start)
+        $stuUnloggedRank = [];
+        foreach ($todaySchedules as $ts2) {
+            if ((int)$ts2['logged_today'] === 0) {
+                $k = $ts2['student_id'] ?: ($ts2['disp_student'].'|'.$ts2['student_code'] ?? '');
+                $stuUnloggedRank[$k] = 0;
+            }
+        }
+        ?>
         <?php foreach ($todaySchedules as $s):
             $loggedToday = (int)$s['logged_today'] > 0;
-            // ใช้ total_done_all (COUNT จาก class_completions ต่อนักเรียน) เพื่อให้ได้ลำดับคาบจริง
-            $thisSess = $loggedToday
-                ? (int)$s['total_done_all']         // บันทึกแล้ว = จำนวนรวมหลังบันทึก
-                : (int)$s['total_done_all'] + 1;    // ยังไม่บันทึก = คาบถัดไป
+            $stuKey = $s['student_id'] ?: ($s['disp_student'].'|'.$s['student_code'] ?? '');
+            if ($loggedToday) {
+                // บันทึกแล้ว = ใช้ total_done_all จริง
+                $thisSess = (int)$s['total_done_all'];
+            } else {
+                // ยังไม่บันทึก = total_done + ลำดับ unlogged slot นี้สำหรับนักเรียนคนนี้วันนี้
+                $stuUnloggedRank[$stuKey] = ($stuUnloggedRank[$stuKey] ?? 0) + 1;
+                $thisSess = (int)$s['total_done_all'] + $stuUnloggedRank[$stuKey];
+            }
             $timeStarted = $nowTime >= $s['time_start'];
         ?>
         <tr>
@@ -236,6 +255,8 @@ function fmtTimePM(string $t): string {
             <td style="text-align:center;">
                 <?php if ($loggedToday): ?>
                 <span style="color:#059669;font-weight:700;font-size:.8rem;">🟢 เรียนแล้ว</span>
+                <?php elseif ($nowTime >= $s['time_start'] && $nowTime <= $s['time_end']): ?>
+                <span style="color:#2563eb;font-weight:700;font-size:.8rem;">🔵 กำลังเรียน</span>
                 <?php else: ?>
                 <span style="color:#d97706;font-size:.8rem;">🟡 รอเรียน</span>
                 <?php endif; ?>
@@ -271,7 +292,7 @@ function fmtTimePM(string $t): string {
 <div class="al-card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:.75rem;">
         <div>
-            <span style="font-weight:700;color:#1f2937;">✅ บันทึกวันนี้ (<?= $dayTH[$dayName]??$dayName ?> <?= date('d/m/Y') ?>)</span>
+            <span style="font-weight:700;color:#1f2937;">✅ บันทึกวันนี้ (<?= $dayTH[$dayName]??$dayName ?> <?= $_now->format('d/m/Y') ?>)</span>
             <span style="background:#d1fae5;color:#065f46;border-radius:99px;padding:1px 10px;font-size:.72rem;font-weight:700;margin-left:8px;"><?= count($todayLogs) ?> คาบ</span>
         </div>
         <?php if (!empty($todayLogs)): ?>
@@ -288,7 +309,7 @@ function fmtTimePM(string $t): string {
     <div style="overflow-x:auto;">
     <table class="al-table">
         <thead>
-            <tr><th>นักเรียน</th><th>ครู</th><th>เวลา (ตาราง)</th><th style="text-align:center;">เรียนแล้ว/ทั้งหมด</th><th>หมายเหตุ</th></tr>
+            <tr><th>นักเรียน</th><th>ครู</th><th>เวลา (ตาราง)</th><th style="text-align:center;">ประเภทคอร์ส / วันที่</th><th style="text-align:center;">เรียนแล้ว/ทั้งหมด</th><th>หมายเหตุ</th></tr>
         </thead>
         <tbody>
         <?php foreach ($todayLogs as $lg): ?>
@@ -296,6 +317,16 @@ function fmtTimePM(string $t): string {
             <td style="font-weight:600;"><?= htmlspecialchars($lg['disp_student']) ?></td>
             <td style="color:#6b7280;"><?= htmlspecialchars($lg['disp_teacher']) ?></td>
             <td style="font-family:monospace;"><?= $lg['time_start'] ? fmtTimePM($lg['time_start']).' – '.fmtTimePM($lg['time_end']) : '—' ?></td>
+            <td style="text-align:center;">
+                <?php
+                $isNewCourse = ($lg['sch_note'] === 'คอร์สใหม่');
+                $logDateFmt  = $lg['log_date'] ? date('d/m/Y', strtotime($lg['log_date'])) : '—';
+                ?>
+                <span class="al-badge" style="background:<?= $isNewCourse?'#dcfce7':'#fef3c7' ?>;color:<?= $isNewCourse?'#166534':'#92400e' ?>;">
+                    <?= $isNewCourse ? '🆕 คอร์สใหม่' : '📚 คอร์สเก่า' ?>
+                </span>
+                <div style="font-size:.7rem;color:#9ca3af;margin-top:2px;"><?= $logDateFmt ?></div>
+            </td>
             <td style="text-align:center;"><span class="al-badge" style="background:#dbeafe;color:#1e40af;"><?= (int)$lg['total_done_all'] ?>/<?= (int)$lg['total_classes'] ?></span></td>
             <td style="font-size:.75rem;color:#9ca3af;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($lg['log_note'] ?? '—') ?></td>
         </tr>

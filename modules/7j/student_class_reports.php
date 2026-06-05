@@ -448,6 +448,15 @@ foreach ($studentSummary as $ss) {
             $scRemain = max(0, $scTotal - $scDone);
             $isCur    = (!$isNew && !$isOld);
             $scColor  = $isOld ? '#9ca3af' : ($scPct>=100?'#dc2626':($scPct>=80?'#f59e0b':($scPct>=50?'#3b82f6':'#10b981')));
+            // progress per-row (แยกตาม enrollment — ไม่ใช้ aggregate)
+            $prgDone   = (int)$sc['completed_classes'];
+            $prgTotal  = (int)$sc['total_classes'];
+            $prgPct    = $prgTotal > 0 ? min(100, round($prgDone/$prgTotal*100)) : 0;
+            $prgRemain = max(0, $prgTotal - $prgDone);
+            $prgColor  = $isOld ? '#9ca3af' : ($prgPct>=100?'#dc2626':($prgPct>=80?'#f59e0b':($prgPct>=50?'#3b82f6':'#10b981')));
+            if ($isNew)        { $prgLabel = '🆕 คอร์สใหม่'; $prgLabelColor = '#059669'; }
+            elseif ($isOld)    { $prgLabel = '📚 คอร์สเก่า'; $prgLabelColor = '#9ca3af'; }
+            else               { $prgLabel = '📖 ปัจจุบัน';  $prgLabelColor = '#1e40af'; }
             $dayLabel = $sc['schedule_type']==='one_time' ? fmtDate($sc['specific_date']) : ($dayMap[$sc['day_of_week']]??$sc['day_of_week']);
             // สถานะนักเรียนโดยรวม (สำหรับ action buttons)
             $stuData  = $stuById[$s['id']] ?? null;
@@ -484,14 +493,15 @@ foreach ($studentSummary as $ss) {
             </td>
             <!-- ความคืบหน้า -->
             <td style="text-align:center;white-space:nowrap;">
+                <div style="font-size:.65rem;font-weight:700;color:<?= $prgLabelColor ?>;margin-bottom:3px;"><?= $prgLabel ?></div>
                 <div style="display:flex;align-items:center;gap:5px;justify-content:center;">
-                    <div class="sr-pbar" style="width:60px;<?= $isOld?'opacity:.5':'' ?>">
-                        <div class="sr-pbar-fill" style="width:<?= $scPct ?>%;background:<?= $scColor ?>;"></div>
+                    <div class="sr-pbar" style="width:60px;<?= $isOld?'opacity:.6':'' ?>">
+                        <div class="sr-pbar-fill" style="width:<?= $prgPct ?>%;background:<?= $prgColor ?>;"></div>
                     </div>
-                    <span style="font-size:.8rem;font-weight:700;color:<?= $scColor ?>"><?= $scDone ?>/<?= $scTotal ?></span>
+                    <span style="font-size:.8rem;font-weight:700;color:<?= $prgColor ?>"><?= $prgDone ?>/<?= $prgTotal ?></span>
                 </div>
-                <?php if (!$isOld && $scRemain > 0): ?>
-                <div style="font-size:.68rem;color:#9ca3af;">(เหลือ <?= $scRemain ?>)</div>
+                <?php if ($prgRemain > 0): ?>
+                <div style="font-size:.68rem;color:#9ca3af;">(เหลือ <?= $prgRemain ?>)</div>
                 <?php endif; ?>
             </td>
             <!-- คอร์ส -->
@@ -518,14 +528,19 @@ foreach ($studentSummary as $ss) {
                         'specificDate'=>$ls['specific_date']??'','timeStart'=>$ls['time_start']??'',
                         'timeEnd'=>$ls['time_end']??'','course'=>$ls['course']??'',
                         'oldTotal'=>$stuTotal,'oldDone'=>$stuDone], JSON_HEX_QUOT|JSON_HEX_APOS);
+                    $hasNewCourse = (int)($stuData['active_remaining'] ?? 0) > 0;
                 ?>
                 <span class="sr-badge" style="background:#fef3c7;color:#92400e;display:block;margin-bottom:4px;">🏆 เรียนครบแล้ว</span>
+                <?php if (!$hasNewCourse): ?>
                 <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center;">
                     <button onclick="openRenewModal(<?= htmlspecialchars($rd,ENT_QUOTES) ?>)"
                         style="background:linear-gradient(135deg,#ea580c,#dc2626);color:#fff;border-radius:6px;padding:3px 8px;font-size:.7rem;font-weight:700;border:none;cursor:pointer;animation:pulse 1.5s infinite;">📞 ต่อคอร์ส</button>
                     <button onclick="confirmNoRenewDirect('<?= htmlspecialchars($s['id'],ENT_QUOTES) ?>','<?= htmlspecialchars($s['displayName'],ENT_QUOTES) ?>')"
                         style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;padding:3px 8px;font-size:.7rem;font-weight:700;cursor:pointer;">❌ ไม่ต่อ</button>
                 </div>
+                <?php else: ?>
+                <span style="color:#6b7280;font-size:.72rem;">✅ ต่อคอร์สแล้ว</span>
+                <?php endif; ?>
                 <?php elseif (!$isOld): ?>
                 <?php if ($learnedToday): ?>
                 <span class="sr-badge" style="background:#dcfce7;color:#166534;">✅ เรียนแล้ว</span>
