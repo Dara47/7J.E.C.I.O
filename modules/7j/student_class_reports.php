@@ -432,25 +432,33 @@ foreach ($studentSummary as $ss) {
             </tr>
         </thead>
         <tbody>
+        <?php $stuActiveDone = []; // running total per student for active rows ?>
         <?php foreach ($allSchRows as $rowIdx => $sc):
             $s        = $sc['_stu'];
             $isNew    = ($sc['note'] === 'คอร์สใหม่');
             $isOld    = ($sc['sch_status'] === 'completed');
-            // คอร์สเก่า: ใช้ aggregate (SUM done, MAX total) จากทุก completed row
+            // คำนวณ running total สำหรับ active rows (ใช้ร่วมกันทั้ง scDone และ prgDone)
+            if (!$isOld) {
+                $stuActiveDone[$s['id']] = ($stuActiveDone[$s['id']] ?? 0) + (int)$sc['completed_classes'];
+                $activeRunningTotal = $stuActiveDone[$s['id']];
+            } else {
+                $activeRunningTotal = (int)$sc['completed_classes'];
+            }
+            // scDone/scTotal: ใช้สำหรับ badge + ปุ่มต่อคอร์ส
             if ($isOld && isset($completedAgg[$s['id']])) {
                 $scDone  = $completedAgg[$s['id']]['done'];
                 $scTotal = $completedAgg[$s['id']]['total'];
             } else {
-                $scDone  = (int)$sc['completed_classes'];
+                $scDone  = $activeRunningTotal;
                 $scTotal = (int)$sc['total_classes'];
             }
             $scPct    = $scTotal > 0 ? min(100,round($scDone/$scTotal*100)) : 0;
             $scRemain = max(0, $scTotal - $scDone);
             $isCur    = (!$isNew && !$isOld);
             $scColor  = $isOld ? '#9ca3af' : ($scPct>=100?'#dc2626':($scPct>=80?'#f59e0b':($scPct>=50?'#3b82f6':'#10b981')));
-            // progress per-row (แยกตาม enrollment — ไม่ใช้ aggregate)
-            $prgDone   = (int)$sc['completed_classes'];
-            $prgTotal  = (int)$sc['total_classes'];
+            // prgDone/prgTotal: ใช้แสดง progress bar
+            $prgDone  = $activeRunningTotal;
+            $prgTotal = (int)$sc['total_classes'];
             $prgPct    = $prgTotal > 0 ? min(100, round($prgDone/$prgTotal*100)) : 0;
             $prgRemain = max(0, $prgTotal - $prgDone);
             $prgColor  = $isOld ? '#9ca3af' : ($prgPct>=100?'#dc2626':($prgPct>=80?'#f59e0b':($prgPct>=50?'#3b82f6':'#10b981')));
@@ -528,19 +536,14 @@ foreach ($studentSummary as $ss) {
                         'specificDate'=>$ls['specific_date']??'','timeStart'=>$ls['time_start']??'',
                         'timeEnd'=>$ls['time_end']??'','course'=>$ls['course']??'',
                         'oldTotal'=>$stuTotal,'oldDone'=>$stuDone], JSON_HEX_QUOT|JSON_HEX_APOS);
-                    $hasNewCourse = (int)($stuData['active_remaining'] ?? 0) > 0;
                 ?>
                 <span class="sr-badge" style="background:#fef3c7;color:#92400e;display:block;margin-bottom:4px;">🏆 เรียนครบแล้ว</span>
-                <?php if (!$hasNewCourse): ?>
                 <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center;">
                     <button onclick="openRenewModal(<?= htmlspecialchars($rd,ENT_QUOTES) ?>)"
                         style="background:linear-gradient(135deg,#ea580c,#dc2626);color:#fff;border-radius:6px;padding:3px 8px;font-size:.7rem;font-weight:700;border:none;cursor:pointer;animation:pulse 1.5s infinite;">📞 ต่อคอร์ส</button>
                     <button onclick="confirmNoRenewDirect('<?= htmlspecialchars($s['id'],ENT_QUOTES) ?>','<?= htmlspecialchars($s['displayName'],ENT_QUOTES) ?>')"
                         style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;padding:3px 8px;font-size:.7rem;font-weight:700;cursor:pointer;">❌ ไม่ต่อ</button>
                 </div>
-                <?php else: ?>
-                <span style="color:#6b7280;font-size:.72rem;">✅ ต่อคอร์สแล้ว</span>
-                <?php endif; ?>
                 <?php elseif (!$isOld): ?>
                 <?php if ($learnedToday): ?>
                 <span class="sr-badge" style="background:#dcfce7;color:#166534;">✅ เรียนแล้ว</span>
