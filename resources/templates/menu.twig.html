@@ -281,7 +281,11 @@ a[href="#top"] { color: #E8640A !important; }
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j Settings/settings.php">⚙️ ตั้งค่าระบบ</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j Settings/settings.php">⚙️ ตั้งค่าทั่วไป</a>
+                </li>
+                <li class="hover:bg-{{ themeColour }}-700 rounded">
+                    <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
+                       href="{{ absoluteURL }}/?q=/modules/7j/settings.php">🔐 จัดการ Admin Login</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-48 m-0 z-40" style="width:calc(100% + 8rem);"></div>
