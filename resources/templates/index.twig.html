@@ -52,26 +52,28 @@ TODO: add template variable details.
 
                     <div class="flex-grow flex items-center justify-end text-right text-sm text-{{ themeColour }}-200">
 
-                        {# Language Switcher #}
-                        {% if lang starts with 'th' %}
-                            <a href="{{ absoluteURL }}/index.php?i18n=en_GB" title="Switch to English"
-                               style="display:inline-flex;align-items:center;gap:6px;padding:5px 14px;
-                                      border-radius:20px;border:1.5px solid rgba(255,255,255,.5);
-                                      background:rgba(255,255,255,.12);color:#fff;font-size:.8rem;
-                                      font-weight:700;text-decoration:none;margin-right:10px;
-                                      backdrop-filter:blur(4px);letter-spacing:.05em;transition:background .2s;">
-                                🇬🇧 EN
-                            </a>
-                        {% else %}
+                        {# Language Switcher — แสดงทั้ง TH/EN, highlight ภาษาปัจจุบัน #}
+                        {% set isTH = lang starts with 'th' %}
+                        <div style="display:inline-flex;gap:4px;margin-right:10px;">
                             <a href="{{ absoluteURL }}/index.php?i18n=th_TH" title="เปลี่ยนเป็นภาษาไทย"
-                               style="display:inline-flex;align-items:center;gap:6px;padding:5px 14px;
-                                      border-radius:20px;border:1.5px solid rgba(255,255,255,.5);
-                                      background:rgba(255,255,255,.12);color:#fff;font-size:.8rem;
-                                      font-weight:700;text-decoration:none;margin-right:10px;
-                                      backdrop-filter:blur(4px);letter-spacing:.05em;transition:background .2s;">
+                               style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;
+                                      border-radius:20px;font-size:.78rem;font-weight:700;text-decoration:none;
+                                      transition:all .2s;
+                                      {{ isTH
+                                          ? 'border:2px solid #fff;background:rgba(255,255,255,.28);color:#fff;'
+                                          : 'border:1.5px solid rgba(255,255,255,.35);background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);' }}">
                                 🇹🇭 TH
                             </a>
-                        {% endif %}
+                            <a href="{{ absoluteURL }}/index.php?i18n=en_GB" title="Switch to English"
+                               style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;
+                                      border-radius:20px;font-size:.78rem;font-weight:700;text-decoration:none;
+                                      transition:all .2s;
+                                      {{ isTH
+                                          ? 'border:1.5px solid rgba(255,255,255,.35);background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);'
+                                          : 'border:2px solid #fff;background:rgba(255,255,255,.28);color:#fff;' }}">
+                                🇬🇧 EN
+                            </a>
+                        </div>
 
                         {% if isLoggedIn and currentUser %}
                         <div class="flex items-center gap-3">

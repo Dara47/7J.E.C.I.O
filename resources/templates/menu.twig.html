@@ -44,135 +44,135 @@ a[href="#top"] { color: #E8640A !important; }
 
     {% if isLoggedIn %}
         {# ─── 7J Custom Menus ─────────────────────────────────────── #}
+        {% set isTH = lang starts with 'th' %}
         {% if isLoggedIn %}
 
-        {# จัดการผู้ใช้ #}
+        {# จัดการผู้ใช้ / User Management #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                จัดการผู้ใช้
+                {{ isTH ? 'จัดการผู้ใช้' : 'Users' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/user_management.php&tab=students">🎓 นักเรียน</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/user_management.php&tab=students">🎓 {{ isTH ? 'นักเรียน' : 'Students' }}</a>
                 </li>
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/user_management.php&tab=teachers">👨‍🏫 ครู</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/user_management.php&tab=teachers">👨‍🏫 {{ isTH ? 'ครู' : 'Teachers' }}</a>
                 </li>
                 <li style="border-top:1px solid rgba(255,255,255,.15);margin:4px 0;"></li>
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/import_csv.php&type=students">📥 นำเข้า CSV นักเรียน</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/import_csv.php&type=students">📥 {{ isTH ? 'นำเข้า CSV นักเรียน' : 'Import Student CSV' }}</a>
                 </li>
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/import_csv.php&type=teachers">📥 นำเข้า CSV ครู</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/import_csv.php&type=teachers">📥 {{ isTH ? 'นำเข้า CSV ครู' : 'Import Teacher CSV' }}</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-64 m-0 z-40" style="width:calc(100% + 8rem);"></div>
         </li>
 
-        {# เวลาว่างครู #}
+        {# เวลาว่างครู / Teacher Availability #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                เวลาว่างครู
+                {{ isTH ? 'เวลาว่างครู' : 'Availability' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/teacher_availability.php">🕐 ช่วงเวลาว่างครู (V1)</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/teacher_availability.php">🕐 {{ isTH ? 'ช่วงเวลาว่างครู (V1)' : 'Free Slots (V1)' }}</a>
                 </li>
-
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/teacher_avail_report.php">📊 รายงานตารางว่างครู</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/teacher_avail_report.php">📊 {{ isTH ? 'รายงานตารางว่างครู' : 'Availability Report' }}</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-48 m-0 z-40" style="width:calc(100% + 8rem);"></div>
         </li>
 
-        {# จัดการตารางเรียน #}
+        {# จัดการตารางเรียน / Schedule Management #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                จัดการตาราง
+                {{ isTH ? 'จัดการตาราง' : 'Schedule' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/manage_schedule.php">📋 จัดการตารางเรียน</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/manage_schedule.php">📋 {{ isTH ? 'จัดการตารางเรียน' : 'Manage Schedule' }}</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-48 m-0 z-40" style="width:calc(100% + 8rem);"></div>
         </li>
 
-        {# ตารางสอนครู #}
+        {# ตารางสอนครู / Teacher Schedule #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                ตารางสอนครู
+                {{ isTH ? 'ตารางสอนครู' : 'Teaching' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/teacher_schedule.php">📋 แบบรายการ</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/teacher_schedule.php">📋 {{ isTH ? 'แบบรายการ' : 'List View' }}</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-48 m-0 z-40" style="width:calc(100% + 8rem);"></div>
         </li>
 
-        {# ตารางเรียน #}
+        {# ตารางเรียน / Class Schedule #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                ตารางเรียน
+                {{ isTH ? 'ตารางเรียน' : 'Classes' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/class_schedule.php">📋 แบบรายการ</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/class_schedule.php">📋 {{ isTH ? 'แบบรายการ' : 'List View' }}</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-48 m-0 z-40" style="width:calc(100% + 8rem);"></div>
         </li>
 
-        {# จัดการใบลา #}
+        {# จัดการใบลา / Leave Management #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                จัดการใบลา
+                {{ isTH ? 'จัดการใบลา' : 'Leave' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/leave_management.php">📋 ใบลาทั้งหมด</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/leave_management.php">📋 {{ isTH ? 'ใบลาทั้งหมด' : 'All Leave Records' }}</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-48 m-0 z-40" style="width:calc(100% + 8rem);"></div>
         </li>
 
 
-        {# บันทึกคาบเรียน #}
+        {# บันทึกคาบเรียน / Class Log #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                บันทึกคาบเรียน
+                {{ isTH ? 'บันทึกคาบเรียน' : 'Class Log' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
@@ -185,107 +185,107 @@ a[href="#top"] { color: #E8640A !important; }
         </li>
 
 
-        {# ครู-นักเรียน #}
+        {# ครู-นักเรียน / Teacher-Student #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                ครู-นักเรียน
+                {{ isTH ? 'ครู-นักเรียน' : 'Teacher-Student' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/teacher_student_relations.php">👥 ความสัมพันธ์ครู-นักเรียน</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/teacher_student_relations.php">👥 {{ isTH ? 'ความสัมพันธ์ครู-นักเรียน' : 'Teacher-Student Relations' }}</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-48 m-0 z-40" style="width:calc(100% + 8rem);"></div>
         </li>
 
-        {# รายงานนักเรียน #}
+        {# รายงานนักเรียน / Student Reports #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                รายงานนักเรียน
+                {{ isTH ? 'รายงานนักเรียน' : 'Student Reports' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/student_class_reports.php">📊 รายงานคาบเรียนนักเรียน</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/student_class_reports.php">📊 {{ isTH ? 'รายงานคาบเรียนนักเรียน' : 'Student Class Report' }}</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-48 m-0 z-40" style="width:calc(100% + 8rem);"></div>
         </li>
 
-        {# รายงานการสอน #}
+        {# รายงานการสอน / Teaching Reports #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                รายงานการสอน
+                {{ isTH ? 'รายงานการสอน' : 'Teaching Reports' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/teaching_report.php">📈 รายงานการสอน</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/teaching_report.php">📈 {{ isTH ? 'รายงานการสอน' : 'Teaching Report' }}</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-48 m-0 z-40" style="width:calc(100% + 8rem);"></div>
         </li>
 
-        {# รายงานการเรียน-การสอน #}
+        {# รายงานการเรียน-การสอน / Learning Reports #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                รายงานการเรียน-สอน
+                {{ isTH ? 'รายงานการเรียน-สอน' : 'Learning Reports' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-56 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/class_learning_report.php">📋 รายงานการเรียน-การสอน</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/class_learning_report.php">📋 {{ isTH ? 'รายงานการเรียน-การสอน' : 'Learning-Teaching Report' }}</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-48 m-0 z-40" style="width:calc(100% + 8rem);"></div>
         </li>
 
-        {# บัญชี #}
+        {# บัญชี / Payroll #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                บัญชี
+                {{ isTH ? 'บัญชี' : 'Payroll' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/payroll.php">🏦 จ่ายค่าจ้างครู</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/payroll.php">🏦 {{ isTH ? 'จ่ายค่าจ้างครู' : 'Teacher Payroll' }}</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-48 m-0 z-40" style="width:calc(100% + 8rem);"></div>
         </li>
 
-        {# ตั้งค่าระบบ #}
+        {# ตั้งค่าระบบ / System Settings #}
         <li class="sm:relative group mx-0 px-0" x-data="{menuOpen: false}" @mouseleave="menuOpen = false" @click.outside="menuOpen = false">
             <a @mouseenter="menuOpen = true" @click="menuOpen = true"
                :class="{'text-gray-800': menuOpen, 'text-gray-100': !menuOpen}"
                class="block font-bold text-sm text-gray-100 no-underline px-4 py-3 cursor-pointer">
-                ตั้งค่าระบบ
+                {{ isTH ? 'ตั้งค่าระบบ' : 'Settings' }}
             </a>
             <ul x-cloak x-show="menuOpen" x-transition:enter.duration.250ms x-transition:leave.duration.0s
                 class="list-none bg-black bg-opacity-75 backdrop-blur-lg backdrop-contrast-125 backdrop-saturate-150 rounded-md absolute w-available ms-4 me-4 sm:mx-0 sm:w-52 my-0 p-1 sm:p-1.5 z-50 left-0">
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j Settings/settings.php">⚙️ ตั้งค่าทั่วไป</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j Settings/settings.php">⚙️ {{ isTH ? 'ตั้งค่าทั่วไป' : 'General Settings' }}</a>
                 </li>
                 <li class="hover:bg-{{ themeColour }}-700 rounded">
                     <a @click="menuOpen = false" class="block text-sm text-white no-underline px-2 py-2 md:py-1 leading-normal"
-                       href="{{ absoluteURL }}/?q=/modules/7j/settings.php">🔐 จัดการ Admin Login</a>
+                       href="{{ absoluteURL }}/?q=/modules/7j/settings.php">🔐 {{ isTH ? 'จัดการ Admin Login' : 'Admin Login' }}</a>
                 </li>
             </ul>
             <div x-cloak x-show="menuOpen" class="absolute -left-8 h-48 m-0 z-40" style="width:calc(100% + 8rem);"></div>
