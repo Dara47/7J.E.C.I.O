@@ -13,6 +13,9 @@ uploads/auto_log/
 *.log
 error_log
 
+# ── Archive files ───────────────────────────────────────────────────
+vendor.zip
+
 # ── OS files ────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
