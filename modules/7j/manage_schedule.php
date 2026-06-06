@@ -382,6 +382,9 @@ function msInitials($name) {
 .ms-page-btn:hover{background:#f3f4f6;}
 .ms-page-btn.active{background:#ea580c;color:#fff;border-color:#ea580c;}
 .ms-section-label{font-size:.7rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em;margin:8px 0 4px;padding:0 2px;border-bottom:1px solid #e5e7eb;}
+#f-dates-container{counter-reset:date-row-counter;}
+#f-dates-container .f-date-row{counter-increment:date-row-counter;}
+#f-dates-container .f-date-row::before{content:counter(date-row-counter);display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;font-size:.75rem;font-weight:700;color:#ea580c;background:#fff7ed;border-radius:50%;flex-shrink:0;align-self:center;}
 </style>
 
 <div style="max-width:100%;padding-bottom:2rem;">
@@ -675,7 +678,6 @@ function msInitials($name) {
             </div>
             <div id="f-dates-container">
                 <div class="f-date-row" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px;">
-                    <span class="row-num" style="min-width:20px;text-align:center;font-size:.78rem;font-weight:700;color:#ea580c;background:#fff7ed;border-radius:4px;padding:2px 5px;flex-shrink:0;">1</span>
                     <input type="date" name="specific_dates[]" id="f-date"
                         style="flex:1;min-width:110px;padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">
                     <input type="time" name="time_starts[]"
@@ -777,7 +779,6 @@ function closeModal() {
     var c = document.getElementById('f-dates-container');
     if (c) {
         c.innerHTML = '<div class="f-date-row" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px;">'
-            + '<span class="row-num" style="min-width:20px;text-align:center;font-size:.78rem;font-weight:700;color:#ea580c;background:#fff7ed;border-radius:4px;padding:2px 5px;flex-shrink:0;">1</span>'
             + '<input type="date" name="specific_dates[]" id="f-date" style="flex:1;min-width:110px;padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
             + '<input type="time" name="time_starts[]" style="width:92px;padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
             + '<span style="color:#9ca3af;font-size:.8rem;flex-shrink:0;">–</span>'
@@ -798,25 +799,16 @@ function addDateSlot(dateVal, tsVal, teVal) {
     row.className = 'f-date-row';
     row.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px;';
     var inp = 'style="padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;"';
-    row.innerHTML = '<span class="row-num" style="min-width:20px;text-align:center;font-size:.78rem;font-weight:700;color:#ea580c;background:#fff7ed;border-radius:4px;padding:2px 5px;flex-shrink:0;">?</span>'
-        + '<input type="date" name="specific_dates[]" value="' + (dateVal||'') + '" '
+    row.innerHTML = '<input type="date" name="specific_dates[]" value="' + (dateVal||'') + '" '
         + 'style="flex:1;min-width:110px;padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
         + '<input type="time" name="time_starts[]" value="' + (tsVal||'') + '" style="width:92px;' + inp.slice(7) + '>'
         + '<span style="color:#9ca3af;font-size:.8rem;flex-shrink:0;">–</span>'
         + '<input type="time" name="time_ends[]" value="' + (teVal||'') + '" style="width:92px;' + inp.slice(7) + '>'
-        + '<button type="button" onclick="this.parentNode.remove();updateRowNumbers();" '
+        + '<button type="button" onclick="this.parentNode.remove();" '
         + 'style="padding:4px 9px;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:.85rem;font-weight:700;flex-shrink:0;" title="ลบ">✕</button>';
     c.appendChild(row);
-    updateRowNumbers();
     row.querySelector('input[type="date"]').focus();
 }
-function updateRowNumbers() {
-    document.querySelectorAll('#f-dates-container .f-date-row').forEach(function(row, i) {
-        var n = row.querySelector('.row-num');
-        if (n) n.textContent = i + 1;
-    });
-}
-
 document.querySelectorAll('.ms-modal-bg').forEach(function(bg) {
     bg.addEventListener('click', function(e) { if (e.target === bg) bg.classList.remove('open'); });
 });
@@ -1098,7 +1090,6 @@ function openEditModal(d) {
     if (c) {
         var ts0 = d.time_start || '', te0 = d.time_end || '';
         c.innerHTML = '<div class="f-date-row" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px;">'
-            + '<span class="row-num" style="min-width:20px;text-align:center;font-size:.78rem;font-weight:700;color:#ea580c;background:#fff7ed;border-radius:4px;padding:2px 5px;flex-shrink:0;">1</span>'
             + '<input type="date" name="specific_dates[]" id="f-date" value="' + (d.specific_date || '') + '" '
             + 'style="flex:1;min-width:110px;padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
             + '<input type="time" name="time_starts[]" value="' + ts0 + '" style="width:92px;padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
