@@ -675,6 +675,7 @@ function msInitials($name) {
             </div>
             <div id="f-dates-container">
                 <div class="f-date-row" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px;">
+                    <span class="row-num" style="min-width:20px;text-align:center;font-size:.78rem;font-weight:700;color:#ea580c;background:#fff7ed;border-radius:4px;padding:2px 5px;flex-shrink:0;">1</span>
                     <input type="date" name="specific_dates[]" id="f-date"
                         style="flex:1;min-width:110px;padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">
                     <input type="time" name="time_starts[]"
@@ -776,6 +777,7 @@ function closeModal() {
     var c = document.getElementById('f-dates-container');
     if (c) {
         c.innerHTML = '<div class="f-date-row" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px;">'
+            + '<span class="row-num" style="min-width:20px;text-align:center;font-size:.78rem;font-weight:700;color:#ea580c;background:#fff7ed;border-radius:4px;padding:2px 5px;flex-shrink:0;">1</span>'
             + '<input type="date" name="specific_dates[]" id="f-date" style="flex:1;min-width:110px;padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
             + '<input type="time" name="time_starts[]" style="width:92px;padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
             + '<span style="color:#9ca3af;font-size:.8rem;flex-shrink:0;">–</span>'
@@ -796,16 +798,25 @@ function addDateSlot(dateVal, tsVal, teVal) {
     row.className = 'f-date-row';
     row.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px;';
     var inp = 'style="padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;"';
-    row.innerHTML = '<input type="date" name="specific_dates[]" value="' + (dateVal||'') + '" '
+    row.innerHTML = '<span class="row-num" style="min-width:20px;text-align:center;font-size:.78rem;font-weight:700;color:#ea580c;background:#fff7ed;border-radius:4px;padding:2px 5px;flex-shrink:0;">?</span>'
+        + '<input type="date" name="specific_dates[]" value="' + (dateVal||'') + '" '
         + 'style="flex:1;min-width:110px;padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
         + '<input type="time" name="time_starts[]" value="' + (tsVal||'') + '" style="width:92px;' + inp.slice(7) + '>'
         + '<span style="color:#9ca3af;font-size:.8rem;flex-shrink:0;">–</span>'
         + '<input type="time" name="time_ends[]" value="' + (teVal||'') + '" style="width:92px;' + inp.slice(7) + '>'
-        + '<button type="button" onclick="this.parentNode.remove()" '
+        + '<button type="button" onclick="this.parentNode.remove();updateRowNumbers();" '
         + 'style="padding:4px 9px;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:.85rem;font-weight:700;flex-shrink:0;" title="ลบ">✕</button>';
     c.appendChild(row);
-    row.querySelector('input').focus();
+    updateRowNumbers();
+    row.querySelector('input[type="date"]').focus();
 }
+function updateRowNumbers() {
+    document.querySelectorAll('#f-dates-container .f-date-row').forEach(function(row, i) {
+        var n = row.querySelector('.row-num');
+        if (n) n.textContent = i + 1;
+    });
+}
+
 document.querySelectorAll('.ms-modal-bg').forEach(function(bg) {
     bg.addEventListener('click', function(e) { if (e.target === bg) bg.classList.remove('open'); });
 });
@@ -1041,17 +1052,17 @@ function applyAvailSlot(s) {
         document.getElementById('f-tstart').value = s.start_time || '';
         document.getElementById('f-tend').value   = s.end_time   || '';
     } else {
-        // ใส่วันที่เข้า slot ที่ว่างอยู่ หรือเพิ่ม slot ใหม่
+        // หา row ที่ยังไม่มีเวลา → ใส่เวลา (และวันที่ถ้าว่าง) / ถ้าเต็มทุก row ให้เพิ่ม row ใหม่
         var rows   = document.querySelectorAll('#f-dates-container .f-date-row');
         var filled = false;
         for (var i = 0; i < rows.length; i++) {
-            var di = rows[i].querySelector('[name="specific_dates[]"]');
-            if (di && !di.value) {
-                di.value = s.specific_date || '';
-                var tsi = rows[i].querySelector('[name="time_starts[]"]');
+            var tsi = rows[i].querySelector('[name="time_starts[]"]');
+            if (tsi && !tsi.value) {
+                var di  = rows[i].querySelector('[name="specific_dates[]"]');
                 var tei = rows[i].querySelector('[name="time_ends[]"]');
-                if (tsi) tsi.value = s.start_time || '';
-                if (tei) tei.value = s.end_time   || '';
+                if (di && !di.value) di.value = s.specific_date || '';
+                tsi.value = s.start_time || '';
+                if (tei) tei.value = s.end_time || '';
                 filled = true; break;
             }
         }
@@ -1087,6 +1098,7 @@ function openEditModal(d) {
     if (c) {
         var ts0 = d.time_start || '', te0 = d.time_end || '';
         c.innerHTML = '<div class="f-date-row" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:6px;">'
+            + '<span class="row-num" style="min-width:20px;text-align:center;font-size:.78rem;font-weight:700;color:#ea580c;background:#fff7ed;border-radius:4px;padding:2px 5px;flex-shrink:0;">1</span>'
             + '<input type="date" name="specific_dates[]" id="f-date" value="' + (d.specific_date || '') + '" '
             + 'style="flex:1;min-width:110px;padding:7px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
             + '<input type="time" name="time_starts[]" value="' + ts0 + '" style="width:92px;padding:7px 6px;border:1px solid #d1d5db;border-radius:7px;font-size:.82rem;box-sizing:border-box;outline:none;">'
