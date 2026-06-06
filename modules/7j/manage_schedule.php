@@ -430,31 +430,108 @@ function msInitials($name) {
 </div>
 <?php else: ?>
 
-<?php foreach ($schedules as $s):
-    // ใช้ชื่อจาก JOIN ถ้ามี FK ไม่งั้นใช้ text field เดิม
-    $displayName  = $s['st_name'] ?: $s['student_name'];
-    $displayCode  = $s['st_code'] ?: $s['student_code'];
-    $displayTeach = $s['t_name']  ?: $s['teacher_name'];
-    $isLinkedStu  = !empty($s['student_id']);
-    $isLinkedTea  = !empty($s['teacher_ref_id']);
-    $done   = (int)$s['completed_classes'];
-    $tot    = (int)$s['total_classes'];
-    $pct    = $tot > 0 ? min(100, round($done/$tot*100)) : 0;
-    $remain = max(0, $tot - $done);
-    $barCol = $pct >= 80 ? '#dc2626' : ($pct >= 50 ? '#d97706' : '#ea580c');
-    $isOne  = $s['schedule_type'] === 'one_time';
-    $dayLbl = $isOne ? '📅 '.fmtDate($s['specific_date']) : '🗓 '.($dayThMap[$s['day_of_week']] ?? $s['day_of_week']);
+<?php
+$grouped = [];
+foreach ($schedules as $s) {
+    $stuKey = !empty($s['student_id'])
+        ? 'id_'.(int)$s['student_id']
+        : 'raw_'.($s['student_code'].'|'.$s['student_name']);
+    $grouped[$stuKey][] = $s;
+}
 ?>
-<div class="ms-card">
-    <div style="display:flex;align-items:flex-start;gap:12px;">
+<?php foreach ($grouped as $stuKey => $sessions):
+    $first       = $sessions[0];
+    $displayName = $first['st_name']  ?: $first['student_name'];
+    $displayCode = $first['st_code']  ?: $first['student_code'];
+    $isLinkedStu = !empty($first['student_id']);
+    $cnt         = count($sessions);
+    $groupId     = 'g'.substr(md5($stuKey), 0, 8);
+?>
+<div class="ms-card" style="padding:0;overflow:hidden;">
+    <!-- Student header -->
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 14px 10px;<?= $cnt>1?'border-bottom:1px solid #f3f4f6':'' ?>;">
         <div class="ms-avatar" style="background:<?= msAvatarColor($displayName) ?>;"><?= htmlspecialchars(msInitials($displayName)) ?></div>
         <div style="flex:1;min-width:0;">
             <div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;">
-                <span style="font-weight:600;font-size:.95rem;"><?= htmlspecialchars($displayName) ?></span>
+                <span style="font-weight:700;font-size:.97rem;"><?= htmlspecialchars($displayName) ?></span>
                 <?php if ($displayCode): ?><span class="ms-badge"><?= htmlspecialchars($displayCode) ?></span><?php endif; ?>
                 <span class="<?= $isLinkedStu?'ms-linked':'ms-unlinked' ?>"><?= $isLinkedStu?'🔗 linked':'⚠️ unlinked' ?></span>
             </div>
-            <div style="font-size:.8rem;color:#6b7280;margin-top:3px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+            <?php if ($cnt > 1): ?>
+            <div style="font-size:.75rem;color:#6b7280;margin-top:2px;"><?= $cnt ?> ตาราง</div>
+            <?php endif; ?>
+        </div>
+        <?php if ($cnt > 1): ?>
+        <button type="button" onclick="toggleGrp('<?= $groupId ?>', this, <?= $cnt-1 ?>)"
+            style="background:#fff7ed;border:none;cursor:pointer;color:#ea580c;font-size:.78rem;font-weight:700;
+                   display:flex;align-items:center;gap:4px;padding:4px 11px;border-radius:20px;flex-shrink:0;">
+            <span class="grp-arrow" style="display:inline-block;transition:transform .25s;transform:rotate(-90deg);">&#9660;</span>
+            <span class="grp-label">ดูเพิ่ม <?= $cnt-1 ?></span>
+        </button>
+        <?php endif; ?>
+    </div>
+    <!-- Sessions -->
+    <?php foreach ($sessions as $idx => $s):
+        $displayTeach = $s['t_name']  ?: $s['teacher_name'];
+        $isLinkedTea  = !empty($s['teacher_ref_id']);
+        $done   = (int)$s['completed_classes'];
+        $tot    = (int)$s['total_classes'];
+        $pct    = $tot > 0 ? min(100, round($done/$tot*100)) : 0;
+        $remain = max(0, $tot - $done);
+        $barCol = $pct >= 80 ? '#dc2626' : ($pct >= 50 ? '#d97706' : '#ea580c');
+        $isOne  = $s['schedule_type'] === 'one_time';
+        $dayLbl = $isOne ? '📅 '.fmtDate($s['specific_date']) : '🗓 '.($dayThMap[$s['day_of_week']] ?? $s['day_of_week']);
+        $thNow    = new DateTime('now', new DateTimeZone('Asia/Bangkok'));
+        $todayStr = $thNow->format('Y-m-d');
+        $todayDay = $thNow->format('l');
+        $nowMins  = (int)$thNow->format('H') * 60 + (int)$thNow->format('i');
+        $rtLabel  = ''; $rtStyle = '';
+        if ($s['status'] === 'active') {
+            $slotDate = ($isOne ? $s['specific_date'] : ($weekDates[$s['day_of_week']] ?? ''));
+            if ($slotDate === $todayStr) {
+                $tsA = $s['time_start'] ? array_map('intval', explode(':', $s['time_start'].':00')) : null;
+                $teA = $s['time_end']   ? array_map('intval', explode(':', $s['time_end'].':00'))   : null;
+                if ($tsA) {
+                    $startMins = $tsA[0]*60+$tsA[1];
+                    $endMins   = $teA ? $teA[0]*60+$teA[1] : $startMins+60;
+                    if ($nowMins < $startMins) {
+                        $rtLabel = '⏳ รอเรียน'; $rtStyle = 'background:#fef3c7;color:#92400e;';
+                    } elseif ($nowMins <= $endMins) {
+                        $rtLabel = '🟢 กำลังเรียน'; $rtStyle = 'background:#dcfce7;color:#166534;';
+                    } elseif ((int)($s['logged_today'] ?? 0) > 0) {
+                        $rtLabel = '✅ เรียนแล้ววันนี้'; $rtStyle = 'background:#f0fdf4;color:#15803d;';
+                    } else {
+                        $rtLabel = '⏳ รอเรียน'; $rtStyle = 'background:#fef3c7;color:#92400e;';
+                    }
+                }
+            } elseif ($slotDate > $todayStr || $slotDate === '') {
+                $rtLabel = '⏳ รอเรียน'; $rtStyle = 'background:#fef3c7;color:#92400e;';
+            }
+        }
+        $canEdit = true;
+        $loggedTodayFlag = (int)($s['logged_today'] ?? 0) > 0;
+        if ($loggedTodayFlag) {
+            $canEdit = false;
+        } else {
+            $tsArr2 = $s['time_start'] ? array_map('intval', explode(':', $s['time_start'].':00')) : null;
+            if ($tsArr2) {
+                $sMins = $tsArr2[0]*60+$tsArr2[1];
+                if ($isOne) {
+                    if (($s['specific_date'] ?? '') < $todayStr)                             $canEdit = false;
+                    elseif (($s['specific_date'] ?? '') === $todayStr && $nowMins >= $sMins) $canEdit = false;
+                } else {
+                    if ($todayDay === ($s['day_of_week'] ?? '') && $nowMins >= $sMins)       $canEdit = false;
+                }
+            }
+        }
+        $stColors = ['active'=>'#dbeafe|#1e40af','completed'=>'#fef3c7|#92400e','cancelled'=>'#fee2e2|#991b1b'];
+        $stLabels = ['active'=>'เปิดสอน','completed'=>'ครบแล้ว','cancelled'=>'ยกเลิก'];
+        [$stBg,$stFg] = explode('|', $stColors[$s['status']] ?? '#f3f4f6|#374151');
+    ?>
+    <?php if ($idx === 1): ?><div id="<?= $groupId ?>" style="max-height:0;overflow:hidden;transition:max-height .35s ease;"><?php endif; ?>
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 14px 10px;<?= $idx>0?'border-top:1px solid #f3f4f6;':'' ?>">
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:.8rem;color:#6b7280;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
                 <span class="ms-badge-teacher">👨‍🏫 <?= htmlspecialchars($displayTeach) ?><?= $s['t_code'] ? ' ('.$s['t_code'].')' : '' ?></span>
                 <span class="<?= $isLinkedTea?'ms-linked':'ms-unlinked' ?>"><?= $isLinkedTea?'🔗':'⚠️' ?></span>
                 <?php if ($s['course']): ?><span class="ms-badge-course">📚 <?= htmlspecialchars($s['course']) ?></span><?php endif; ?>
@@ -476,67 +553,10 @@ function msInitials($name) {
             <?php endif; ?>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;align-items:flex-end;">
-            <?php
-            // ─── สถานะคอร์ส ───────────────────────────────────────────
-            $stColors = ['active'=>'#dbeafe|#1e40af','completed'=>'#fef3c7|#92400e','cancelled'=>'#fee2e2|#991b1b'];
-            $stLabels = ['active'=>'เปิดสอน','completed'=>'ครบแล้ว','cancelled'=>'ยกเลิก'];
-            [$stBg,$stFg] = explode('|', $stColors[$s['status']] ?? '#f3f4f6|#374151');
-
-            // ─── real-time session status (วันนี้เท่านั้น) ────────────
-            $thNow    = new DateTime('now', new DateTimeZone('Asia/Bangkok'));
-            $todayStr = $thNow->format('Y-m-d');
-            $todayDay = $thNow->format('l');
-            $nowMins  = (int)$thNow->format('H') * 60 + (int)$thNow->format('i');
-            $rtLabel  = ''; $rtStyle = '';
-            if ($s['status'] === 'active') {
-                $slotDate = ($isOne ? $s['specific_date'] : ($weekDates[$s['day_of_week']] ?? ''));
-                if ($slotDate === $todayStr) {
-                    $ts = $s['time_start'] ? array_map('intval', explode(':', $s['time_start'].':00')) : null;
-                    $te = $s['time_end']   ? array_map('intval', explode(':', $s['time_end'].':00'))   : null;
-                    if ($ts) {
-                        $startMins = $ts[0]*60+$ts[1];
-                        $endMins   = $te ? $te[0]*60+$te[1] : $startMins+60;
-                        if ($nowMins < $startMins) {
-                            $rtLabel = '⏳ รอเรียน'; $rtStyle = 'background:#fef3c7;color:#92400e;';
-                        } elseif ($nowMins <= $endMins) {
-                            $rtLabel = '🟢 กำลังเรียน'; $rtStyle = 'background:#dcfce7;color:#166534;';
-                        } elseif ((int)($s['logged_today'] ?? 0) > 0) {
-                            $rtLabel = '✅ เรียนแล้ววันนี้'; $rtStyle = 'background:#f0fdf4;color:#15803d;';
-                        } else {
-                            $rtLabel = '⏳ รอเรียน'; $rtStyle = 'background:#fef3c7;color:#92400e;';
-                        }
-                    }
-                } elseif ($slotDate > $todayStr || $slotDate === '') {
-                    // วันในอนาคต หรือ weekly ที่ยังไม่ถึงวัน
-                    $rtLabel = '⏳ รอเรียน'; $rtStyle = 'background:#fef3c7;color:#92400e;';
-                }
-            }
-            // ─── canEdit: ล็อคถ้าถึงเวลาเรียนหรือบันทึกแล้ว ──────────────
-            $canEdit = true;
-            $loggedTodayFlag = (int)($s['logged_today'] ?? 0) > 0;
-            if ($loggedTodayFlag) {
-                $canEdit = false;
-            } else {
-                $tsArr = $s['time_start'] ? array_map('intval', explode(':', $s['time_start'].':00')) : null;
-                if ($tsArr) {
-                    $sMins = $tsArr[0]*60+$tsArr[1];
-                    if ($isOne) {
-                        if (($s['specific_date'] ?? '') < $todayStr)                             $canEdit = false;
-                        elseif (($s['specific_date'] ?? '') === $todayStr && $nowMins >= $sMins) $canEdit = false;
-                    } else {
-                        if ($todayDay === ($s['day_of_week'] ?? '') && $nowMins >= $sMins)       $canEdit = false;
-                    }
-                }
-            }
-            ?>
             <?php if ($rtLabel): ?>
-            <span style="<?= $rtStyle ?>border-radius:99px;padding:1px 9px;font-size:.7rem;font-weight:700;">
-                <?= $rtLabel ?>
-            </span>
+            <span style="<?= $rtStyle ?>border-radius:99px;padding:1px 9px;font-size:.7rem;font-weight:700;"><?= $rtLabel ?></span>
             <?php else: ?>
-            <span style="background:<?= $stBg ?>;color:<?= $stFg ?>;border-radius:99px;padding:1px 9px;font-size:.7rem;font-weight:700;">
-                <?= $stLabels[$s['status']] ?? $s['status'] ?>
-            </span>
+            <span style="background:<?= $stBg ?>;color:<?= $stFg ?>;border-radius:99px;padding:1px 9px;font-size:.7rem;font-weight:700;"><?= $stLabels[$s['status']] ?? $s['status'] ?></span>
             <?php endif; ?>
             <div style="display:flex;gap:4px;">
                 <?php if ($canEdit): ?>
@@ -552,6 +572,8 @@ function msInitials($name) {
             </div>
         </div>
     </div>
+    <?php endforeach; ?>
+    <?php if ($cnt > 1): ?></div><?php endif; ?>
 </div>
 <?php endforeach; ?>
 
@@ -1118,6 +1140,21 @@ function openLogModal(id, name, sessionNum) {
     document.getElementById('log-session').textContent = sessionNum;
     document.getElementById('log-date').value = new Date().toISOString().slice(0,10);
     document.getElementById('modal-log').classList.add('open');
+}
+
+function toggleGrp(id, btn, extra) {
+    var el = document.getElementById(id);
+    var arrow = btn.querySelector('.grp-arrow');
+    var label = btn.querySelector('.grp-label');
+    if (!el.style.maxHeight || el.style.maxHeight === '0px') {
+        el.style.maxHeight = el.scrollHeight + 'px';
+        arrow.style.transform = '';
+        label.textContent = 'ซ่อน';
+    } else {
+        el.style.maxHeight = '0px';
+        arrow.style.transform = 'rotate(-90deg)';
+        label.textContent = 'ดูเพิ่ม ' + extra;
+    }
 }
 
 </script>
