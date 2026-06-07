@@ -48,7 +48,8 @@ $stmtStu = $connection2->prepare("
             WHERE cc.student_id = st.id
            ) AS actual_completed,
            sch.day_of_week, sch.time_start, sch.time_end, sch.course,
-           sch.status AS sch_status
+           sch.status AS sch_status,
+           sch.schedule_type, sch.specific_date
     FROM sevenj_students st
     LEFT JOIN sevenj_teachers t  ON t.id  = st.teacherId
     LEFT JOIN sevenj_schedule sch ON sch.student_id = st.id
@@ -130,15 +131,45 @@ foreach ($byTeacher as &$tData) {
         // แสดงทุก schedule ในลิสต์ พร้อมระบุสถานะ
         if (($s['day_of_week'] ?? '') || ($s['time_start'] ?? '') || ($s['course'] ?? '')) {
             $merged[$gKey]['schedules'][] = [
-                'day_of_week' => $s['day_of_week'] ?? '',
-                'time_start'  => $s['time_start']  ?? '',
-                'time_end'    => $s['time_end']     ?? '',
-                'course'      => $s['course']       ?? '',
-                'status'      => $s['sch_status']   ?? 'active',
+                'day_of_week'   => $s['day_of_week']    ?? '',
+                'time_start'    => $s['time_start']     ?? '',
+                'time_end'      => $s['time_end']       ?? '',
+                'course'        => $s['course']         ?? '',
+                'status'        => $s['sch_status']     ?? 'active',
+                'schedule_type' => $s['schedule_type']  ?? 'weekly',
+                'specific_date' => $s['specific_date']  ?? '',
             ];
         }
     }
     $tData['students'] = array_values($merged);
+}
+unset($tData);
+
+// คำนวณ done จากเวลาจริง (อ้างอิงเดียวกับ auto_log และ class_schedule)
+$_trBkk     = new DateTimeZone('Asia/Bangkok');
+$_trNow     = new DateTime('now', $_trBkk);
+$_trNowHM   = $_trNow->format('H:i');
+$_trToday   = $_trNow->format('Y-m-d');
+$_trDayName = $_trNow->format('l');
+foreach ($byTeacher as &$tData) {
+    foreach ($tData['students'] as &$st) {
+        $done = 0;
+        foreach ($st['schedules'] as $sch) {
+            $stype  = $sch['schedule_type'] ?? 'weekly';
+            $tstart = $sch['time_start']    ?? '';
+            if ($tstart === '') continue;
+            if ($stype === 'one_time') {
+                $sdate = $sch['specific_date'] ?? '';
+                if ($sdate < $_trToday) { $done++; }
+                elseif ($sdate === $_trToday && $_trNowHM >= $tstart) { $done++; }
+            } else {
+                $dow = ucfirst(strtolower($sch['day_of_week'] ?? ''));
+                if ($_trDayName === $dow && $_trNowHM >= $tstart) { $done++; }
+            }
+        }
+        $st['completed_classes'] = $done;
+    }
+    unset($st);
 }
 unset($tData);
 

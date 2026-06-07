@@ -52,10 +52,10 @@ if (!$msg && isset($_SESSION['7j_clr_msg'])) {
 }
 
 // ─── Auto-cleanup ────────────────────────────────────────────────────────────
-// กฎ 1: เกิน 60 วัน → ลบเสมอ
-$connection2->query("DELETE FROM sevenj_class_completions WHERE created_at < DATE_SUB(NOW(), INTERVAL 60 DAY)");
+// กฎ 1: เกิน 365 วัน → ลบเสมอ
+$connection2->query("DELETE FROM sevenj_class_completions WHERE created_at < DATE_SUB(NOW(), INTERVAL 365 DAY)");
 
-// กฎ 2: เกิน 30 วัน + เรียนครบแล้ว → ลบ / ยังค้าง → คงไว้จนครบ 60 วัน
+// กฎ 2: เกิน 30 วัน + เรียนครบแล้ว → ลบ / ยังค้าง → คงไว้จนครบ 365 วัน
 // ใช้ PHP fetch IDs ก่อน เพื่อหลีกเลี่ยง MySQL self-reference ใน DELETE
 $old30 = $connection2->query("
     SELECT c.id, c.student_id,
@@ -102,44 +102,76 @@ if ($dateFrom) { $where[] = 'c.completed_date >= ?'; $bindP[] = $dateFrom; }
 if ($dateTo)   { $where[] = 'c.completed_date <= ?'; $bindP[] = $dateTo; }
 $whereSQL = implode(' AND ', $where);
 
-// Stats รวม (ไม่ขึ้นกับ filter)
-$stats = $connection2->query("
-    SELECT COUNT(*) AS total_records,
-           COUNT(DISTINCT student_id) AS total_students,
-           COUNT(DISTINCT teacher_ref_id) AS total_teachers,
-           MIN(completed_date) AS first_date,
-           MAX(completed_date) AS last_date
-    FROM sevenj_class_completions
-")->fetch(PDO::FETCH_ASSOC);
+// ─── Time-based stats + records (อ้างอิงรายงานนักเรียน/การสอน) ──────────────
+$_clBkk     = new DateTimeZone('Asia/Bangkok');
+$_clNow     = new DateTime('now', $_clBkk);
+$_clNowHM   = $_clNow->format('H:i');
+$_clToday   = $_clNow->format('Y-m-d');
+$_clDayName = $_clNow->format('l');
 
-// Count with filter
-$stmtCnt = $connection2->prepare("SELECT COUNT(*) FROM sevenj_class_completions c WHERE $whereSQL");
-$stmtCnt->execute($bindP);
-$totalFiltered = (int)$stmtCnt->fetchColumn();
-$pages = $totalFiltered > 0 ? (int)ceil($totalFiltered / $perPage) : 1;
+$_schAll = $connection2->query("
+    SELECT sch.id AS sch_id, sch.student_id, sch.student_code, sch.student_name,
+           sch.teacher_ref_id, sch.teacher_name,
+           sch.schedule_type, sch.day_of_week, sch.specific_date,
+           sch.time_start, sch.time_end, sch.total_classes, sch.course, sch.note,
+           COALESCE(st.displayName, sch.student_name) AS disp_student,
+           COALESCE(st.studentCode, sch.student_code) AS disp_code,
+           COALESCE(t.displayName,  sch.teacher_name) AS disp_teacher
+    FROM sevenj_schedule sch
+    LEFT JOIN sevenj_students st ON st.id = sch.student_id
+    LEFT JOIN sevenj_teachers  t ON t.id  = sch.teacher_ref_id
+    WHERE sch.status IN ('active','completed')
+    ORDER BY sch.specific_date DESC, sch.time_start DESC
+")->fetchAll(PDO::FETCH_ASSOC);
 
-// Records
-$bindFull = array_merge($bindP);
-$stmtRows = $connection2->prepare("
-    SELECT c.*,
-        COALESCE(st.displayName, c.student_name) AS disp_student,
-        COALESCE(st.studentCode, c.student_code) AS disp_code,
-        COALESCE(t.displayName, c.teacher_name)  AS disp_teacher
-    FROM sevenj_class_completions c
-    LEFT JOIN sevenj_students st ON st.id = c.student_id
-    LEFT JOIN sevenj_teachers  t ON t.id  = c.teacher_ref_id
-    WHERE $whereSQL
-    ORDER BY c.completed_date DESC, c.id DESC
-    LIMIT $perPage OFFSET $offset
-");
-$stmtRows->execute($bindFull);
-$records = $stmtRows->fetchAll(PDO::FETCH_ASSOC);
-
-// Group by date
-$byDate = [];
-foreach ($records as $r) {
-    $byDate[$r['completed_date']][] = $r;
+$_allPassed = []; $_seqMap = [];
+foreach ($_schAll as $sl) {
+    $stype  = $sl['schedule_type'] ?? 'weekly';
+    $tstart = $sl['time_start']    ?? '';
+    $slotDate = null;
+    if ($stype === 'one_time') {
+        $sdate = $sl['specific_date'] ?? '';
+        if ($sdate < $_clToday) $slotDate = $sdate;
+        elseif ($sdate === $_clToday && $tstart !== '' && $_clNowHM >= $tstart) $slotDate = $sdate;
+    } else {
+        $dow = ucfirst(strtolower($sl['day_of_week'] ?? ''));
+        if ($_clDayName === $dow && $tstart !== '' && $_clNowHM >= $tstart) $slotDate = $_clToday;
+    }
+    if (!$slotDate) continue;
+    $stuKey = $sl['student_id'] ?: ($sl['disp_student'].'|'.($sl['student_code'] ?? ''));
+    $_seqMap[$stuKey] = ($_seqMap[$stuKey] ?? 0) + 1;
+    $sl['completed_date'] = $slotDate;
+    $sl['session_number'] = $_seqMap[$stuKey];
+    $_allPassed[] = $sl;
 }
+
+$_slotDates = array_column($_allPassed, 'completed_date');
+$stats = [
+    'total_records'  => count($_allPassed),
+    'total_students' => count(array_unique(array_map(fn($r) => $r['student_id'] ?: $r['disp_student'], $_allPassed))),
+    'total_teachers' => count(array_unique(array_filter(array_column($_allPassed, 'teacher_ref_id')))),
+    'first_date'     => !empty($_slotDates) ? min($_slotDates) : null,
+    'last_date'      => !empty($_slotDates) ? max($_slotDates) : null,
+];
+
+$_filtered = $_allPassed;
+if ($search !== '') {
+    $sl = mb_strtolower($search);
+    $_filtered = array_values(array_filter($_filtered, function($r) use ($sl) {
+        return mb_strpos(mb_strtolower($r['disp_student'] ?? ''), $sl) !== false
+            || mb_strpos(mb_strtolower($r['disp_code']    ?? ''), $sl) !== false
+            || mb_strpos(mb_strtolower($r['disp_teacher'] ?? ''), $sl) !== false;
+    }));
+}
+if ($dateFrom) $_filtered = array_values(array_filter($_filtered, fn($r) => $r['completed_date'] >= $dateFrom));
+if ($dateTo)   $_filtered = array_values(array_filter($_filtered, fn($r) => $r['completed_date'] <= $dateTo));
+
+$totalFiltered = count($_filtered);
+$pages   = max(1, (int)ceil($totalFiltered / $perPage));
+$records = array_slice($_filtered, $offset, $perPage);
+
+$byDate = [];
+foreach ($records as $r) { $byDate[$r['completed_date']][] = $r; }
 
 [$alertType, $alertText] = $msg ? explode('|', $msg, 2) : ['', ''];
 
@@ -180,7 +212,7 @@ function fmtTimePM(string $t): string {
     <div>
         <h2 style="font-size:1.4rem;font-weight:700;color:#1f2937;margin:0;">📋 รายงานการเรียน-การสอน</h2>
         <p style="font-size:.78rem;color:#6b7280;margin:3px 0 0;">บันทึกคาบเรียนที่เสร็จแล้วทุกวัน<?= $isAdmin?' — <span class="clr-admin-tag">🔑 Admin Mode</span>':'' ?></p>
-        <p style="font-size:.75rem;color:#d97706;margin:3px 0 0;">⏳ ลบอัตโนมัติ: เรียนครบแล้ว → 30 วัน &nbsp;|&nbsp; 🔒 ยังค้างอยู่ (เช่น 9/10) → 60 วัน</p>
+        <p style="font-size:.75rem;color:#d97706;margin:3px 0 0;">⏳ ลบอัตโนมัติ: เรียนครบแล้ว → 30 วัน &nbsp;|&nbsp; 🔒 ยังค้างอยู่ (เช่น 9/10) → 365 วัน</p>
     </div>
 </div>
 
@@ -255,18 +287,6 @@ function fmtTimePM(string $t): string {
             </span>
             <span class="clr-badge" style="background:#fef3c7;color:#92400e;"><?= $dayCount ?> คาบ</span>
         </div>
-        <?php if ($isAdmin): ?>
-        <form method="post" onsubmit="return confirm('ลบบันทึกทั้งหมด <?= $dayCount ?> รายการของวันที่ <?= $date ?> ใช่หรือไม่?');" style="margin:0;">
-            <input type="hidden" name="action"    value="delete_by_date">
-            <input type="hidden" name="del_date"  value="<?= htmlspecialchars($date) ?>">
-            <input type="hidden" name="q"         value="/modules/7j/class_learning_report.php">
-            <input type="hidden" name="s_back"    value="<?= htmlspecialchars($search) ?>">
-            <input type="hidden" name="df_back"   value="<?= htmlspecialchars($dateFrom) ?>">
-            <input type="hidden" name="dt_back"   value="<?= htmlspecialchars($dateTo) ?>">
-            <input type="hidden" name="page_back" value="<?= $page ?>">
-            <button type="submit" class="clr-btn clr-btn-del" style="font-size:.72rem;padding:3px 10px;">🗑 ลบทั้งวัน</button>
-        </form>
-        <?php endif; ?>
     </div>
     <div style="overflow-x:auto;">
     <table class="clr-table">
@@ -280,14 +300,13 @@ function fmtTimePM(string $t): string {
                 <th style="text-align:center;">คาบที่</th>
                 <th>คอร์ส</th>
                 <th>หมายเหตุ</th>
-                <th style="text-align:center;white-space:nowrap;">ลบอัตโนมัติใน</th>
-                <?php if ($isAdmin): ?><th style="width:60px;text-align:center;">ลบ</th><?php endif; ?>
+                <th style="text-align:center;">คาบ</th>
             </tr>
         </thead>
         <tbody>
         <?php foreach ($dayRows as $r): ?>
         <tr>
-            <td><span class="clr-badge" style="background:#f3f4f6;color:#6b7280;">#<?= (int)$r['id'] ?></span></td>
+            <td><span class="clr-badge" style="background:#f3f4f6;color:#6b7280;">#<?= (int)$r['sch_id'] ?></span></td>
             <td style="font-weight:600;white-space:nowrap;"><?= htmlspecialchars($r['disp_student']) ?></td>
             <td><span class="clr-badge" style="background:#fff7ed;color:#9a3412;"><?= htmlspecialchars($r['disp_code']) ?></span></td>
             <td style="color:#6b7280;white-space:nowrap;"><?= htmlspecialchars($r['disp_teacher']) ?></td>
@@ -295,43 +314,11 @@ function fmtTimePM(string $t): string {
             <td style="text-align:center;"><span class="clr-badge" style="background:#dbeafe;color:#1e40af;">#<?= (int)$r['session_number'] ?></span></td>
             <td style="font-size:.78rem;color:#059669;"><?= htmlspecialchars($r['course'] ?? '—') ?></td>
             <td style="font-size:.75rem;color:#9ca3af;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($r['note'] ?? '') ?>"><?= htmlspecialchars($r['note'] ?? '—') ?></td>
-            <td style="text-align:center;">
-                <?php
-                // ตรวจว่านักเรียนยังมีคาบค้างอยู่ไหม
-                $stCheck = $connection2->prepare("
-                    SELECT
-                        (SELECT COUNT(*) FROM sevenj_class_completions cx WHERE cx.student_id = ?) AS done_all,
-                        COALESCE((SELECT MAX(sch.total_classes) FROM sevenj_schedule sch WHERE sch.student_id = ? AND sch.status='active'), 0) AS total_pkg
-                ");
-                $stCheck->execute([$r['student_id'], $r['student_id']]);
-                $chk = $stCheck->fetch();
-                $hasRemaining = $chk && ($chk['total_pkg'] > 0) && ((int)$chk['done_all'] < (int)$chk['total_pkg']);
-                $expireDays   = $hasRemaining ? 60 : 30;
-                $daysLeft     = (int)ceil((strtotime($r['created_at']) + $expireDays * 86400 - time()) / 86400);
-                if ($hasRemaining):
-                ?><span class="clr-badge" style="background:#ede9fe;color:#5b21b6;" title="ยังค้างอยู่ — ลบเมื่อครบ 60 วัน">🔒 <?= $daysLeft ?> วัน</span>
-                <?php elseif ($daysLeft <= 3): ?>
-                <span class="clr-badge" style="background:#fee2e2;color:#991b1b;"><?= $daysLeft ?> วัน</span>
-                <?php elseif ($daysLeft <= 7): ?>
-                <span class="clr-badge" style="background:#fef3c7;color:#92400e;"><?= $daysLeft ?> วัน</span>
-                <?php else: ?>
-                <span class="clr-badge" style="background:#dcfce7;color:#166534;"><?= $daysLeft ?> วัน</span>
-                <?php endif; ?>
+            <td style="text-align:center;white-space:nowrap;">
+                <?php $remain = max(0, (int)$r['total_classes'] - (int)$r['session_number']); ?>
+                <span class="clr-badge" style="background:#dbeafe;color:#1e40af;"><?= (int)$r['session_number'] ?>/<?= (int)$r['total_classes'] ?></span>
+                <?php if ($remain > 0): ?><div style="font-size:.65rem;color:#9ca3af;">(เหลือ <?= $remain ?>)</div><?php endif; ?>
             </td>
-            <?php if ($isAdmin): ?>
-            <td style="text-align:center;">
-                <form method="post" onsubmit="return confirm('ลบบันทึก #<?= (int)$r['id'] ?> ใช่หรือไม่?');" style="margin:0;">
-                    <input type="hidden" name="action"    value="delete_record">
-                    <input type="hidden" name="record_id" value="<?= (int)$r['id'] ?>">
-                    <input type="hidden" name="q"         value="/modules/7j/class_learning_report.php">
-                    <input type="hidden" name="s_back"    value="<?= htmlspecialchars($search) ?>">
-                    <input type="hidden" name="df_back"   value="<?= htmlspecialchars($dateFrom) ?>">
-                    <input type="hidden" name="dt_back"   value="<?= htmlspecialchars($dateTo) ?>">
-                    <input type="hidden" name="page_back" value="<?= $page ?>">
-                    <button type="submit" class="clr-btn clr-btn-del" style="font-size:.68rem;padding:2px 7px;">🗑</button>
-                </form>
-            </td>
-            <?php endif; ?>
         </tr>
         <?php endforeach; ?>
         </tbody>

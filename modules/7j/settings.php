@@ -32,10 +32,16 @@ function settingsVerify(string $input, string $storedHash, string $storedSalt): 
     return hash_equals($storedHash, hash('sha256', $storedSalt . $input));
 }
 
+// Build base URL dynamically (avoids hardcoded /MyNewShool/ path)
+$_stProto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$_stBase  = $_stProto . '://' . $_SERVER['HTTP_HOST']
+          . rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])), '/');
+$_stSelf  = $_stBase . '/?q=/modules/7j/settings.php';
+
 // Logout
 if (($_POST['_settings_action'] ?? '') === 'logout') {
     unset($_SESSION['7j_settings_auth']);
-    header('Location: /MyNewShool/?q=/modules/7j/settings.php');
+    header('Location: ' . $_stSelf);
     exit;
 }
 
@@ -44,7 +50,7 @@ if (($_POST['_settings_action'] ?? '') === 'login') {
     $inputPass = trim($_POST['_settings_pass'] ?? '');
     if (settingsVerify($inputPass, $storedHash, $storedSalt)) {
         $_SESSION['7j_settings_auth'] = true;
-        header('Location: /MyNewShool/?q=/modules/7j/settings.php');
+        header('Location: ' . $_stSelf);
         exit;
     } else {
         $settingsError = 'รหัสผ่านไม่ถูกต้อง';
@@ -229,7 +235,7 @@ input:focus{outline:2px solid #e07b28;border-color:#e07b28;}
     <?php if ($settingsError): ?>
       <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm mb-4">⚠️ <?= htmlspecialchars($settingsError) ?></div>
     <?php endif; ?>
-    <form method="POST">
+    <form method="POST" action="<?= htmlspecialchars($_stSelf) ?>">
       <input type="hidden" name="_settings_action" value="login">
       <label class="block text-sm font-semibold text-gray-700 mb-1">รหัสผ่านเข้าเมนู</label>
       <input type="password" name="_settings_pass" placeholder="กรอกรหัสผ่าน" autofocus class="mb-4">
@@ -254,7 +260,7 @@ input:focus{outline:2px solid #e07b28;border-color:#e07b28;}
         <p class="text-sm text-gray-500">7J English Center — Admin Management</p>
       </div>
     </div>
-    <form method="POST" class="inline">
+    <form method="POST" action="<?= htmlspecialchars($_stSelf) ?>" class="inline">
       <input type="hidden" name="_settings_action" value="logout">
       <button type="submit" class="text-sm text-gray-500 hover:text-red-600 border border-gray-300 rounded-lg px-4 py-2">🚪 ออกจากระบบ</button>
     </form>

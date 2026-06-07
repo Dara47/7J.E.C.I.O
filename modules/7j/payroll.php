@@ -11,15 +11,21 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 define('PAYROLL_PASS_HASH', hash('sha256', 'ATAL190314'));
 $payrollLoginError = '';
 
+// Build base URL dynamically (avoids hardcoded /MyNewShool/ path)
+$_pyProto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$_pyBase  = $_pyProto . '://' . $_SERVER['HTTP_HOST']
+          . rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])), '/');
+$_pySelf  = $_pyBase . '/?q=/modules/7j/payroll.php';
+
 if (($_POST['_payroll_action'] ?? '') === 'logout') {
     unset($_SESSION['7j_payroll_auth']);
-    header('Location: /MyNewShool/?q=/modules/7j/payroll.php');
+    header('Location: ' . $_pySelf);
     exit;
 }
 if (($_POST['_payroll_action'] ?? '') === 'login') {
     if (hash_equals(PAYROLL_PASS_HASH, hash('sha256', trim($_POST['_payroll_pass'] ?? '')))) {
         $_SESSION['7j_payroll_auth'] = true;
-        header('Location: /MyNewShool/?q=/modules/7j/payroll.php');
+        header('Location: ' . $_pySelf);
         exit;
     } else {
         $payrollLoginError = 'รหัสผ่านไม่ถูกต้อง';
@@ -391,7 +397,7 @@ if ($action === 'export' && !empty($records)) {
         exit;
     } elseif ($fmt === 'pdf') {
         $_SESSION['7j_payroll_pdf'] = ['records' => $records, 'total' => $grandTotal, 'date' => date('d/m/Y H:i')];
-        header("Location: /MyNewShool/?q=/modules/7j/payroll.php&print=1");
+        header("Location: {$_pyBase}/?q=/modules/7j/payroll.php&print=1");
         exit;
     }
 }
@@ -488,9 +494,8 @@ if (!$payrollAuthed): ?>
         <?php if ($payrollLoginError): ?>
         <div class="pl-err">⚠️ <?= htmlspecialchars($payrollLoginError) ?></div>
         <?php endif; ?>
-        <form method="post">
+        <form method="post" action="<?= htmlspecialchars($_pySelf) ?>">
             <input type="hidden" name="_payroll_action" value="login">
-            <input type="hidden" name="q" value="/modules/7j/payroll.php">
             <input type="password" name="_payroll_pass" class="pl-inp" placeholder="••••••••••" autofocus>
             <button type="submit" class="pl-btn">🔓 เข้าสู่ระบบ</button>
         </form>
@@ -559,9 +564,8 @@ endif;
         <p style="font-size:.83rem;color:#6b7280;margin:3px 0 0;">จัดการค่าจ้างครูและแอดมิน</p>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
-        <form method="post" style="display:inline;">
+        <form method="post" action="<?= htmlspecialchars($_pySelf) ?>" style="display:inline;">
             <input type="hidden" name="_payroll_action" value="logout">
-            <input type="hidden" name="q" value="/modules/7j/payroll.php">
             <button type="submit" class="py-btn py-btn-outline" style="font-size:.8rem;padding:6px 14px;">🔒 ออกจากระบบบัญชี</button>
         </form>
         <button class="py-btn py-btn-primary" id="btn-add-teacher" onclick="teaOpenAdd()" style="font-size:.9rem;padding:8px 20px;">

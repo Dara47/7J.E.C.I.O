@@ -178,6 +178,27 @@ $schDetailRows = $connection2->query("
     WHERE sch.status IN ('active','completed')
     ORDER BY sch.student_id, sch.id ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
+// คำนวณ time_done จากเวลาจริง (อ้างอิงเดียวกับ auto_log และ class_schedule)
+$_srBkk     = new DateTimeZone('Asia/Bangkok');
+$_srNow     = new DateTime('now', $_srBkk);
+$_srNowHM   = $_srNow->format('H:i');
+$_srToday   = $_srNow->format('Y-m-d');
+$_srDayName = $_srNow->format('l');
+foreach ($schDetailRows as &$sd) {
+    $stype  = $sd['schedule_type'] ?? 'weekly';
+    $tstart = $sd['time_start']    ?? '';
+    $td = 0;
+    if ($tstart !== '') {
+        if ($stype === 'one_time') {
+            $sdate = $sd['specific_date'] ?? '';
+            if ($sdate < $_srToday || ($sdate === $_srToday && $_srNowHM >= $tstart)) $td = 1;
+        } else {
+            if ($_srDayName === ucfirst(strtolower($sd['day_of_week'] ?? '')) && $_srNowHM >= $tstart) $td = 1;
+        }
+    }
+    $sd['time_done'] = $td;
+}
+unset($sd);
 $schByStudent = [];
 foreach ($schDetailRows as $sd) {
     if ($sd['student_id']) $schByStudent[$sd['student_id']][] = $sd;
@@ -393,7 +414,7 @@ foreach ($schDetailRows as $sd) {
         $sid = $sd['student_id'];
         $lastCompletedId[$sid] = $sd['sch_id'];
         if (!isset($completedAgg[$sid])) $completedAgg[$sid] = ['done'=>0,'total'=>0];
-        $completedAgg[$sid]['done']  += (int)$sd['completed_classes'];
+        $completedAgg[$sid]['done']  += (int)$sd['time_done'];
         $completedAgg[$sid]['total']  = max($completedAgg[$sid]['total'], (int)$sd['total_classes']);
     }
 }
@@ -439,10 +460,10 @@ foreach ($studentSummary as $ss) {
             $isOld    = ($sc['sch_status'] === 'completed');
             // คำนวณ running total สำหรับ active rows (ใช้ร่วมกันทั้ง scDone และ prgDone)
             if (!$isOld) {
-                $stuActiveDone[$s['id']] = ($stuActiveDone[$s['id']] ?? 0) + (int)$sc['completed_classes'];
+                $stuActiveDone[$s['id']] = ($stuActiveDone[$s['id']] ?? 0) + (int)$sc['time_done'];
                 $activeRunningTotal = $stuActiveDone[$s['id']];
             } else {
-                $activeRunningTotal = (int)$sc['completed_classes'];
+                $activeRunningTotal = (int)$sc['time_done'];
             }
             // scDone/scTotal: ใช้สำหรับ badge + ปุ่มต่อคอร์ส
             if ($isOld && isset($completedAgg[$s['id']])) {
@@ -549,7 +570,7 @@ foreach ($studentSummary as $ss) {
                 </div>
                     <?php endif; ?>
                 <?php elseif (!$isOld): ?>
-                <?php if ($learnedToday && (int)$sc['completed_classes'] > 0): ?>
+                <?php if ($sc['time_done'] > 0): ?>
                 <span class="sr-badge" style="background:#dcfce7;color:#166534;">✅ เรียนแล้ว</span>
                 <?php else: ?>
                 <span class="sr-badge" style="background:#dbeafe;color:#1e40af;">⏳ รอเรียน</span>

@@ -149,6 +149,20 @@ $todaySchedules = $connection2->query("
     ORDER BY s.time_start
 ")->fetchAll(PDO::FETCH_ASSOC);
 
+// Override todayLogs: อ้างอิงจาก schedule ที่เวลาผ่านแล้ว (แทน sevenj_class_completions ที่อาจว่าง)
+$todayLogs = [];
+foreach ($todaySchedules as $s) {
+    if ($nowTime > ($s['time_end'] ?? '')) {
+        $todayLogs[] = array_merge($s, [
+            'sch_note'               => $s['note'] ?? '',
+            'log_note'               => $s['note'] ?? '',
+            'log_date'               => $today,
+            'total_done_all_student' => 0,
+            'logged_today_student'   => 0,
+        ]);
+    }
+}
+
 $dayTH = ['Monday'=>'จันทร์','Tuesday'=>'อังคาร','Wednesday'=>'พุธ',
           'Thursday'=>'พฤหัสบดี','Friday'=>'ศุกร์','Saturday'=>'เสาร์','Sunday'=>'อาทิตย์'];
 
@@ -213,9 +227,8 @@ function fmtTimePM(string $t): string {
     <table class="al-table">
         <thead>
             <tr>
-                <th>เวลา</th><th>นักเรียน</th><th>ครู</th><th>คาบที่</th>
+                <th>วัน</th><th>เวลา</th><th>นักเรียน</th><th>ครู</th><th>คาบที่</th>
                 <th style="text-align:center;">สถานะวันนี้</th><th style="text-align:center;">เวลาปัจจุบัน</th>
-                <th style="text-align:center;">จัดตาราง</th>
             </tr>
         </thead>
         <tbody>
@@ -242,7 +255,13 @@ function fmtTimePM(string $t): string {
             }
             $timeStarted = $nowTime >= $s['time_start'];
         ?>
+        <?php
+        $rowDow  = $s['schedule_type']==='one_time' ? date('l',strtotime($s['specific_date']??$today)) : ($s['day_of_week']??$dayName);
+        $rowDate = $s['schedule_type']==='one_time' ? date('d/m/Y',strtotime($s['specific_date']??$today)) : date('d/m/Y',strtotime($today));
+        $rowDayTH = $dayTH[$rowDow] ?? $rowDow;
+        ?>
         <tr>
+            <td style="white-space:nowrap;font-size:.82rem;">วัน<?=$rowDayTH?><br><span style="font-family:monospace;color:#6b7280;"><?=$rowDate?></span></td>
             <td style="font-family:monospace;font-weight:600;">
                 <?= fmtTimePM($s['time_start'] ?? '') ?> – <?= fmtTimePM($s['time_end'] ?? '') ?>
             </td>
@@ -252,6 +271,8 @@ function fmtTimePM(string $t): string {
             <td style="text-align:center;">
                 <?php if ($loggedToday): ?>
                 <span class="al-badge" style="background:#d1fae5;color:#065f46;">✅ บันทึกแล้ว</span>
+                <?php elseif ($nowTime > $s['time_end']): ?>
+                <span class="al-badge" style="background:#fee2e2;color:#991b1b;">⚠️ ยังไม่บันทึก</span>
                 <?php else: ?>
                 <span class="al-badge" style="background:#fef3c7;color:#92400e;">⏳ รอบันทึก</span>
                 <?php endif; ?>
@@ -261,28 +282,11 @@ function fmtTimePM(string $t): string {
                 <span style="color:#059669;font-weight:700;font-size:.8rem;">🟢 เรียนแล้ว</span>
                 <?php elseif ($nowTime >= $s['time_start'] && $nowTime <= $s['time_end']): ?>
                 <span style="color:#2563eb;font-weight:700;font-size:.8rem;">🔵 กำลังเรียน</span>
+                <?php elseif ($nowTime > $s['time_end']): ?>
+                <span style="color:#059669;font-weight:700;font-size:.8rem;">✅ เรียนแล้ว</span>
                 <?php else: ?>
                 <span style="color:#d97706;font-size:.8rem;">🟡 รอเรียน</span>
                 <?php endif; ?>
-            </td>
-            <td style="text-align:center;">
-                <?php
-                $remain = max(0, (int)$s['total_classes'] - (int)$s['total_done_all']);
-                $modalData = json_encode([
-                    'student_id'   => $s['student_id']   ?? '',
-                    'student_code' => $s['student_code']  ?? '',
-                    'student_name' => $s['disp_student']  ?? '',
-                    'teacher_id'   => $s['teacher_ref_id'] ?? '',
-                    'teacher_name' => $s['disp_teacher']  ?? '',
-                    'total_classes'=> (int)$s['total_classes'],
-                    'done'         => (int)$s['total_done_all'],
-                    'remain'       => $remain,
-                ], JSON_HEX_QUOT|JSON_HEX_APOS);
-                ?>
-                <button onclick='openSchedModal(<?= $modalData ?>)'
-                    style="background:linear-gradient(135deg,#1A2A5E,#E8640A);color:#fff;border:none;border-radius:7px;padding:4px 12px;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap;">
-                    + จัดตาราง
-                </button>
             </td>
         </tr>
         <?php endforeach; ?>
@@ -366,224 +370,7 @@ function fmtTimePM(string $t): string {
 <script>setTimeout(function(){var el=document.getElementById('al-err-msg');if(el)el.remove();},5000);</script>
 <?php endif; ?>
 
-<!-- ─── Modal จัดตาราง ─────────────────────────────────────────────────────── -->
-<div id="sched-modal-bg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:8000;align-items:center;justify-content:center;overflow-y:auto;padding:20px;">
-<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;margin:auto;box-shadow:0 8px 32px rgba(0,0,0,.2);overflow:hidden;">
-    <div style="background:linear-gradient(135deg,#1A2A5E,#E8640A);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
-        <div style="color:#fff;font-weight:700;font-size:1rem;">📅 จัดตารางเรียน</div>
-        <button onclick="closeSchedModal()" style="background:none;border:none;color:#fff;font-size:1.3rem;cursor:pointer;line-height:1;">✕</button>
-    </div>
-    <form method="POST" id="sched-form" style="padding:1.25rem 1.5rem;">
-        <input type="hidden" name="action"       value="add_schedule">
-        <input type="hidden" name="q"            value="/modules/7j/auto_log.php">
-        <input type="hidden" name="student_id"   id="sm-sid">
-        <input type="hidden" name="student_code" id="sm-scode">
-        <input type="hidden" name="student_name" id="sm-sname">
+<div id="sched-modal-bg" style="display:none;"></div>
 
-        <!-- นักเรียน (readonly) -->
-        <div style="background:#f9fafb;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;gap:12px;align-items:center;">
-            <span style="font-size:1.3rem;">🎓</span>
-            <div>
-                <div id="sm-disp-name" style="font-weight:700;font-size:.95rem;color:#1f2937;"></div>
-                <div id="sm-disp-code" style="font-size:.75rem;color:#9ca3af;"></div>
-            </div>
-            <div style="margin-left:auto;text-align:right;">
-                <div style="font-size:.72rem;color:#6b7280;">คาบเรียน</div>
-                <div id="sm-disp-prog" style="font-size:.88rem;font-weight:700;color:#E8640A;"></div>
-                <div id="sm-disp-remain" style="font-size:.72rem;color:#059669;"></div>
-            </div>
-        </div>
-
-        <!-- ครู -->
-        <div style="margin-bottom:12px;">
-            <label style="display:block;font-size:.8rem;font-weight:700;color:#374151;margin-bottom:4px;">ครูผู้สอน</label>
-            <select name="teacher_id" id="sm-teacher" onchange="smShowAvailability(this.value)" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.86rem;box-sizing:border-box;">
-                <option value="">— เลือกครู —</option>
-                <?php foreach ($allTeachersForModal as $t): ?>
-                <option value="<?= htmlspecialchars($t['id']) ?>"><?= htmlspecialchars($t['displayName']) ?> (<?= htmlspecialchars($t['teacherCode']) ?>)</option>
-                <?php endforeach; ?>
-            </select>
-            <div id="sm-avail-hint" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:.8rem;color:#166534;">
-                <strong>🕐 ช่วงเวลาว่างของครู — คลิกเพื่อเลือก:</strong>
-                <div id="sm-avail-list" style="margin-top:5px;"></div>
-            </div>
-        </div>
-
-        <!-- ประเภท -->
-        <div style="margin-bottom:12px;display:flex;gap:16px;align-items:center;">
-            <label style="font-size:.8rem;font-weight:700;color:#374151;">ประเภท</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;">
-                <input type="radio" name="schedule_type" value="one_time" id="sm-type-once" checked onchange="smToggleType()"> วันเฉพาะ
-            </label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;">
-                <input type="radio" name="schedule_type" value="weekly" id="sm-type-weekly" onchange="smToggleType()"> รายสัปดาห์
-            </label>
-        </div>
-
-        <!-- วันเฉพาะ (one_time) -->
-        <div id="sm-dates-section" style="margin-bottom:12px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                <label style="font-size:.8rem;font-weight:700;color:#374151;">วันที่เรียน</label>
-                <button type="button" onclick="smAddDate()" style="font-size:.75rem;padding:3px 10px;background:#E8640A;color:#fff;border:none;border-radius:6px;cursor:pointer;">+ เพิ่มวันที่</button>
-            </div>
-            <div id="sm-date-rows"></div>
-        </div>
-
-        <!-- วันในสัปดาห์ (weekly) -->
-        <div id="sm-weekly-section" style="display:none;margin-bottom:12px;">
-            <label style="display:block;font-size:.8rem;font-weight:700;color:#374151;margin-bottom:4px;">วันในสัปดาห์</label>
-            <select name="day_of_week" id="sm-dow" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.86rem;box-sizing:border-box;">
-                <option value="Monday">จันทร์</option><option value="Tuesday">อังคาร</option>
-                <option value="Wednesday">พุธ</option><option value="Thursday">พฤหัสบดี</option>
-                <option value="Friday">ศุกร์</option><option value="Saturday">เสาร์</option>
-                <option value="Sunday">อาทิตย์</option>
-            </select>
-        </div>
-
-        <!-- เวลา -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-            <div>
-                <label style="display:block;font-size:.8rem;font-weight:700;color:#374151;margin-bottom:4px;">เวลาเริ่ม</label>
-                <input type="time" name="time_start" id="sm-tstart" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.86rem;box-sizing:border-box;">
-            </div>
-            <div>
-                <label style="display:block;font-size:.8rem;font-weight:700;color:#374151;margin-bottom:4px;">เวลาจบ</label>
-                <input type="time" name="time_end" id="sm-tend" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.86rem;box-sizing:border-box;">
-            </div>
-        </div>
-
-        <!-- คาบทั้งหมด -->
-        <div style="margin-bottom:12px;">
-            <label style="display:block;font-size:.8rem;font-weight:700;color:#374151;margin-bottom:4px;">คาบทั้งหมด (package)</label>
-            <input type="number" name="total_classes" id="sm-total" min="1" value="20"
-                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.86rem;box-sizing:border-box;">
-        </div>
-
-        <!-- หมายเหตุ -->
-        <div style="margin-bottom:16px;">
-            <label style="display:block;font-size:.8rem;font-weight:700;color:#374151;margin-bottom:4px;">หมายเหตุ</label>
-            <textarea name="note" id="sm-note" rows="2" placeholder="บันทึกเพิ่มเติม..."
-                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.86rem;box-sizing:border-box;resize:vertical;"></textarea>
-        </div>
-
-        <div style="display:flex;justify-content:flex-end;gap:10px;">
-            <button type="button" onclick="closeSchedModal()" style="padding:9px 20px;border:1px solid #d1d5db;border-radius:7px;background:#fff;font-size:.88rem;cursor:pointer;">ยกเลิก</button>
-            <button type="submit" style="padding:9px 24px;background:linear-gradient(135deg,#1A2A5E,#E8640A);color:#fff;border:none;border-radius:7px;font-size:.88rem;font-weight:700;cursor:pointer;">💾 บันทึกตาราง</button>
-        </div>
-    </form>
-</div>
-</div>
-
-<script>
-var _smDateCount = 0;
-var smAvailData = <?= json_encode($smAvailByTeacher) ?>;
-var SM_DAYS_TH  = {Sunday:'อาทิตย์',Monday:'จันทร์',Tuesday:'อังคาร',Wednesday:'พุธ',Thursday:'พฤหัสบดี',Friday:'ศุกร์',Saturday:'เสาร์'};
-
-function smShowAvailability(teacherId) {
-    var hint = document.getElementById('sm-avail-hint');
-    var list = document.getElementById('sm-avail-list');
-    if (!teacherId || !smAvailData[teacherId] || smAvailData[teacherId].length === 0) {
-        hint.style.display = 'none'; return;
-    }
-    list.innerHTML = '';
-    smAvailData[teacherId].forEach(function(s) {
-        var label = s.type === 'weekly'
-            ? '🗓 ' + (SM_DAYS_TH[s.day] || s.day)
-            : '📅 ' + s.specific_date;
-        var chip = document.createElement('span');
-        chip.style.cssText = 'display:inline-block;background:#bbf7d0;color:#166534;border-radius:6px;'
-            + 'padding:3px 10px;margin:3px 3px;font-size:.78rem;cursor:pointer;border:1px solid #86efac;';
-        chip.title = 'คลิกเพื่อเลือกช่วงเวลานี้';
-        chip.innerHTML = label + ' <strong>' + s.start_time + '–' + s.end_time + '</strong>'
-            + (s.note ? ' <span style="opacity:.65;">(' + s.note + ')</span>' : '')
-            + ' <span style="font-size:.7rem;opacity:.6;">▶ เลือก</span>';
-        chip.onmouseover = function() { this.style.background = '#4ade80'; };
-        chip.onmouseout  = function() { this.style.background = '#bbf7d0'; };
-        chip.onclick     = function() { smApplySlot(s, chip); };
-        list.appendChild(chip);
-    });
-    hint.style.display = '';
-}
-
-function smApplySlot(s, chip) {
-    document.getElementById('sm-tstart').value = s.start_time || '';
-    document.getElementById('sm-tend').value   = s.end_time   || '';
-    if (s.type === 'weekly') {
-        document.getElementById('sm-type-weekly').checked = true;
-        document.getElementById('sm-dow').value = s.day || '';
-        smToggleType();
-    } else {
-        document.getElementById('sm-type-once').checked = true;
-        smToggleType();
-        var firstDate = document.querySelector('#sm-date-rows input[type=date]');
-        if (firstDate) firstDate.value = s.specific_date || '';
-    }
-    document.querySelectorAll('#sm-avail-list span').forEach(function(c) { c.style.background='#bbf7d0'; c.style.color='#166534'; });
-    chip.style.background = '#16a34a'; chip.style.color = '#fff';
-}
-
-function openSchedModal(d) {
-    document.getElementById('sm-sid').value   = d.student_id   || '';
-    document.getElementById('sm-scode').value = d.student_code || '';
-    document.getElementById('sm-sname').value = d.student_name || '';
-    document.getElementById('sm-disp-name').textContent  = d.student_name || '';
-    document.getElementById('sm-disp-code').textContent  = d.student_code || '';
-    document.getElementById('sm-disp-prog').textContent  = d.done + ' / ' + d.total_classes + ' คาบ';
-    document.getElementById('sm-disp-remain').textContent = 'เหลือ ' + d.remain + ' คาบ';
-    document.getElementById('sm-total').value = d.total_classes || 20;
-    // pre-select teacher ถ้ามี + แสดง availability
-    var sel = document.getElementById('sm-teacher');
-    sel.value = d.teacher_id || '';
-    smShowAvailability(d.teacher_id || '');
-    // reset dates
-    _smDateCount = 0;
-    document.getElementById('sm-date-rows').innerHTML = '';
-    smAddDate();
-    // reset type
-    document.getElementById('sm-type-once').checked = true;
-    smToggleType();
-    // reset note/time
-    document.getElementById('sm-tstart').value = '';
-    document.getElementById('sm-tend').value   = '';
-    document.getElementById('sm-note').value   = '';
-    // show modal
-    var bg = document.getElementById('sched-modal-bg');
-    bg.style.display = 'flex';
-}
-
-function closeSchedModal() {
-    document.getElementById('sched-modal-bg').style.display = 'none';
-}
-
-function smAddDate() {
-    _smDateCount++;
-    var idx = _smDateCount;
-    var row = document.createElement('div');
-    row.id = 'sm-dr-' + idx;
-    row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;';
-    row.innerHTML = '<input type="date" name="specific_dates[]" style="flex:1;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:.86rem;box-sizing:border-box;">'
-        + (idx > 1 ? '<button type="button" onclick="smRemoveDate(' + idx + ')" style="padding:5px 10px;background:#fee2e2;color:#991b1b;border:none;border-radius:6px;cursor:pointer;font-size:.8rem;">ลบ</button>' : '');
-    document.getElementById('sm-date-rows').appendChild(row);
-}
-
-function smRemoveDate(idx) {
-    var el = document.getElementById('sm-dr-' + idx);
-    if (el) el.remove();
-}
-
-function smToggleType() {
-    var isOnce = document.getElementById('sm-type-once').checked;
-    document.getElementById('sm-dates-section').style.display  = isOnce ? '' : 'none';
-    document.getElementById('sm-weekly-section').style.display = isOnce ? 'none' : '';
-}
-
-// ปิด modal เมื่อคลิก backdrop
-document.getElementById('sched-modal-bg').addEventListener('click', function(e) {
-    if (e.target === this) closeSchedModal();
-});
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') closeSchedModal();
-});
-</script>
 
 </div>

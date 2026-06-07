@@ -171,7 +171,7 @@ $recents = $stmtRec->fetchAll(PDO::FETCH_ASSOC);
     </form>
 
     <?php if (empty($students)): ?>
-    <div style="text-align:center;padding:3rem;color:#9ca3af;">ไม่พบข้อมูล — <a href="/?q=/modules/7j/manage_schedule.php" style="color:#ea580c;">เพิ่มตารางเรียน</a></div>
+    <div style="text-align:center;padding:3rem;color:#9ca3af;">ไม่พบข้อมูล — <a href="/?q=/modules/7j/schedule_center.php&tab=schedule" style="color:#ea580c;">เพิ่มตารางเรียน</a></div>
     <?php else: foreach ($students as $s):
         $pct = $s['total_classes']>0?round($s['completed_classes']/$s['total_classes']*100):0;
         $sid = 'S'.$s['id'];

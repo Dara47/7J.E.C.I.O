@@ -203,7 +203,11 @@ function getSlotStatus(string $day, string $timeStart, string $timeEnd, string $
 $totalTeachers = count($byTeacher);
 $totalStudents = count(array_unique(array_column($rows, 'student_name')));
 $totalSlots    = count($rows);
-$totalDone     = array_sum(array_column($rows, 'completed_classes'));
+$totalDone = 0;
+foreach ($rows as $r) {
+    $st = getSlotStatus($r['day_of_week'] ?? '', $r['time_start'] ?? '', $r['time_end'] ?? '', $r['schedule_type'] ?? 'weekly', $r['specific_date'] ?? '', $weekDates);
+    if ($st === 'finished' || $st === 'active') $totalDone++;
+}
 ?>
 
 <?php require_once __DIR__.'/_theme.php'; ?>
@@ -235,7 +239,7 @@ $totalDone     = array_sum(array_column($rows, 'completed_classes'));
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:1rem;">
     <h2 style="font-size:1.4rem;font-weight:700;color:#1f2937;margin:0;">👨‍🏫 Teacher Schedule</h2>
     <div style="display:flex;gap:8px;">
-        <a href="?q=/modules/7j/manage_schedule.php" class="ts-btn" style="background:#ea580c;color:#fff;">⚙️ จัดการ</a>
+        <a href="?q=/modules/7j/schedule_center.php&tab=schedule" class="ts-btn" style="background:#ea580c;color:#fff;">⚙️ จัดการ</a>
     </div>
 </div>
 
@@ -276,7 +280,7 @@ $totalDone     = array_sum(array_column($rows, 'completed_classes'));
 <div style="text-align:center;padding:3rem 1rem;color:#9ca3af;">
     <div style="font-size:2.5rem;margin-bottom:.5rem;">📭</div>
     ไม่พบตารางสอน<?= $selectedTeacher?' ของ '.htmlspecialchars($selectedTeacher):'' ?>
-    <br><a href="?q=/modules/7j/manage_schedule.php" style="color:#ea580c;font-size:.9rem;">+ เพิ่มตารางเรียน</a>
+    <br><a href="?q=/modules/7j/schedule_center.php&tab=schedule" style="color:#ea580c;font-size:.9rem;">+ เพิ่มตารางเรียน</a>
 </div>
 
 <?php elseif ($view === 'list'): ?>
@@ -307,12 +311,15 @@ $totalDone     = array_sum(array_column($rows, 'completed_classes'));
     </div>
     <div id="<?= $cardId ?>" style="padding:10px 14px;">
         <?php foreach ($tStudents as $s):
-            // ใช้ progress จาก active enrollment ถ้ามี (กรณีต่อคอร์สแล้ว)
-            $dispDone  = isset($s['active_done'])  ? $s['active_done']  : (int)$s['completed_classes'];
-            $dispTotal = isset($s['active_total']) ? $s['active_total'] : (int)$s['total_classes'];
-            $done = $dispDone >= $dispTotal && $dispTotal > 0;
-            // เรียงลำดับ slots ตามเวลา
-            usort($s['slots'], fn($a,$b) => strcmp($a['time'], $b['time']));
+            // คำนวณจาก slot times (อ้างอิงจากจัดการตารางเรียน)
+            usort($s['slots'], fn($a,$b) => strcmp($a['specific_date'].$a['time'], $b['specific_date'].$b['time']));
+            $dispTotal = count($s['slots']);
+            $dispDone  = 0;
+            foreach ($s['slots'] as $sl) {
+                $st = getSlotStatus($sl['day'], $sl['time'], $sl['time_end'], $sl['type'], $sl['specific_date'], $weekDates);
+                if ($st === 'finished' || $st === 'active') $dispDone++;
+            }
+            $done = $dispTotal > 0 && $dispDone >= $dispTotal;
         ?>
         <div class="ts-slot">
             <!-- นักเรียน + progress รวม -->

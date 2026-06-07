@@ -220,6 +220,27 @@ $thNow    = new DateTime('now', new DateTimeZone('Asia/Bangkok'));
 $todayStr = $thNow->format('Y-m-d');
 $todayDay = $thNow->format('l');
 $nowMins  = (int)$thNow->format('H') * 60 + (int)$thNow->format('i');
+$_tdNowHM = $thNow->format('H:i');
+
+// คำนวณ _time_done และ _running_done แบบ time-based (อ้างอิงเวลาจาก sevenj_schedule)
+$_tdRunning = 0;
+foreach ($schedules as &$_tsch) {
+    $stype  = $_tsch['schedule_type'] ?? 'weekly';
+    $tstart = $_tsch['time_start']    ?? '';
+    $_tdDone = 0;
+    if ($tstart !== '' && ($_tsch['status'] ?? '') === 'active') {
+        if ($stype === 'one_time') {
+            $sdate = $_tsch['specific_date'] ?? '';
+            if ($sdate < $todayStr || ($sdate === $todayStr && $_tdNowHM >= $tstart)) $_tdDone = 1;
+        } else {
+            if (ucfirst(strtolower($_tsch['day_of_week'] ?? '')) === $todayDay && $_tdNowHM >= $tstart) $_tdDone = 1;
+        }
+    }
+    $_tsch['_time_done']    = $_tdDone;
+    $_tdRunning            += $_tdDone;
+    $_tsch['_running_done'] = $_tdRunning;
+}
+unset($_tsch);
 
 // Stats — นับจากทั้ง teacherId (FK) และ teacher_ref_id (schedule)
 $stmtCount = $pdo->prepare('SELECT COUNT(DISTINCT student_id) FROM sevenj_schedule WHERE teacher_ref_id=? AND status="active"');
@@ -242,15 +263,8 @@ foreach ($schedules as $_sch) {
     if ($nowMins >= 720 && (int)$_eh < 12) $_eM += 720;
     if ($nowMins >= $_sM && $nowMins <= $_eM) $activeStudents++;
 }
-$stmtTotalSess  = $pdo->prepare('SELECT COUNT(*) FROM sevenj_class_completions WHERE teacher_ref_id = ?');
-$stmtTotalSess->execute([$me['id']]);
-$totalSessionsAll = (int)$stmtTotalSess->fetchColumn();
-// ถ้าไม่มีจาก completions ให้นับจาก completed_classes ใน schedule
-if ($totalSessionsAll === 0) {
-    $stmtSC = $pdo->prepare('SELECT SUM(completed_classes) FROM sevenj_schedule WHERE teacher_ref_id=?');
-    $stmtSC->execute([$me['id']]);
-    $totalSessionsAll = (int)$stmtSC->fetchColumn();
-}
+// นับคาบสอนแบบ time-based (ผ่านเวลาแล้ว = สอนแล้ว) — อ้างอิงจาก sevenj_schedule
+$totalSessionsAll = array_sum(array_column($schedules, '_time_done'));
 $teachingStatus = 'รอสอน';
 $teachingStatusColor = 'bg-blue-100 text-blue-700';
 // ตรวจตารางวันนี้
@@ -287,17 +301,27 @@ $stmtLeave = $pdo->prepare(
 $stmtLeave->execute([$me['id']]);
 $myLeaves = $stmtLeave->fetchAll();
 
-// ใบลาจากนักเรียนที่แจ้งครูนี้
+// ใบลาจากนักเรียนในความดูแล — รองรับทั้งใบลาที่นักเรียนยื่นผ่านพอร์ทัล (มี notify_teacher_ids)
+// และที่ admin สร้างให้ (ไม่มี) โดยอ้างอิง schedule + teacherId FK
 $stuLeavesForMe = $pdo->prepare(
     'SELECT lr.*, st.displayName AS stu_display, st.studentCode AS stu_code
      FROM sevenj_leave_requests lr
      LEFT JOIN sevenj_students st ON st.id = lr.requester_id
      WHERE lr.requester_role = "student"
-       AND FIND_IN_SET(?, COALESCE(lr.notify_teacher_ids,""))
+       AND (
+           FIND_IN_SET(?, COALESCE(lr.notify_teacher_ids,""))
+           OR lr.requester_id IN (
+               SELECT DISTINCT student_id FROM sevenj_schedule
+               WHERE teacher_ref_id = ? AND student_id IS NOT NULL
+               UNION
+               SELECT id FROM sevenj_students
+               WHERE teacherId = ?
+           )
+       )
      ORDER BY lr.leave_date DESC, lr.created_at DESC
      LIMIT 10'
 );
-$stuLeavesForMe->execute([$me['id']]);
+$stuLeavesForMe->execute([$me['id'], $me['id'], $me['id']]);
 $stuLeavesForMe = $stuLeavesForMe->fetchAll();
 
 $dayTH = [
@@ -539,7 +563,7 @@ $statusLabels = ['active' => 'กำลังเรียน', 'inactive' => '�
       <?php if ($schedules): ?>
       <div class="space-y-2">
         <?php foreach ($schedules as $sch):
-          $schDone   = (int)$sch['completed_classes'];
+          $schDone   = (int)($sch['_running_done'] ?? 0);
           $schTotal  = (int)$sch['total_classes'];
           $schPct    = $schTotal > 0 ? round($schDone / $schTotal * 100) : 0;
           $schRemain = max(0, $schTotal - $schDone);
@@ -567,8 +591,8 @@ $statusLabels = ['active' => 'กำลังเรียน', 'inactive' => '�
               if ($nowMins >= 720 && (int)$sh < 12) $startM += 720;
               if ($nowMins >= 720 && (int)$eh < 12) $endM   += 720;
 
-              if ((int)($sch['logged_today'] ?? 0) > 0) {
-                  $schStatusLbl = '✅ เรียนแล้ว';
+              if ((int)($sch['_time_done'] ?? 0) > 0) {
+                  $schStatusLbl = '✅ สอนแล้ว';
                   $schStatusBg  = '#dcfce7'; $schStatusFg = '#166534';
               } elseif ($nowMins < $startM) {
                   $schStatusLbl = '⏳ รอสอน';
@@ -669,61 +693,65 @@ $statusLabels = ['active' => 'กำลังเรียน', 'inactive' => '�
     </div>
   </div>
 
+  <!-- ── แจ้งลาเรียน (ใบลาจากนักเรียนในความดูแล) ── -->
+  <div class="bg-white rounded-2xl shadow-sm border border-blue-100 p-5">
+    <div class="flex items-center gap-2 mb-3">
+      <span style="font-size:1.2rem;">📢</span>
+      <h3 class="text-sm font-semibold text-gray-600 uppercase tracking-wide">แจ้งลาเรียน</h3>
+      <?php if (!empty($stuLeavesForMe)): ?>
+      <span style="background:#dbeafe;color:#1e40af;border-radius:99px;padding:1px 9px;font-size:.72rem;font-weight:700;margin-left:4px;">
+        <?= count($stuLeavesForMe) ?> รายการ
+      </span>
+      <?php endif; ?>
+    </div>
+    <?php if (!empty($stuLeavesForMe)):
+      $slDayTh = ['Monday'=>'จันทร์','Tuesday'=>'อังคาร','Wednesday'=>'พุธ',
+                  'Thursday'=>'พฤหัสบดี','Friday'=>'ศุกร์','Saturday'=>'เสาร์','Sunday'=>'อาทิตย์'];
+    ?>
+    <div class="space-y-2">
+      <?php foreach ($stuLeavesForMe as $sl):
+        $slSt = match($sl['status'] ?? '') {
+            'approved' => ['✅ อนุมัติแล้ว','#dcfce7','#166534'],
+            'rejected' => ['❌ ไม่อนุมัติ','#fee2e2','#991b1b'],
+            default    => ['⏳ รออนุมัติ','#fef9c3','#713f12'],
+        };
+      ?>
+      <div style="background:#f0f9ff;border-radius:10px;padding:10px 14px;border-left:3px solid #60a5fa;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+          <div>
+            <div style="font-weight:700;color:#1f2937;font-size:.88rem;">
+              🎓 <?= htmlspecialchars($sl['stu_display'] ?? $sl['requester_name']) ?>
+              <span style="color:#9ca3af;font-size:.75rem;font-weight:400;margin-left:4px;"><?= htmlspecialchars($sl['stu_code'] ?? '') ?></span>
+            </div>
+            <div style="font-size:.8rem;color:#6b7280;margin-top:3px;">
+              <?php if ($sl['leave_day']): ?>
+              <span style="background:#eff6ff;color:#1e40af;border-radius:4px;padding:1px 6px;font-size:.75rem;font-weight:600;margin-right:4px;">
+                วัน<?= $slDayTh[$sl['leave_day']] ?? $sl['leave_day'] ?>
+              </span>
+              <?php endif; ?>
+              📅 <?= date('d/m/Y', strtotime($sl['leave_date'])) ?>
+              <?php if ($sl['leave_time_start']): ?>
+                · 🕐 <?= htmlspecialchars($sl['leave_time_start']) ?>
+                <?= $sl['leave_time_end'] ? '–'.htmlspecialchars($sl['leave_time_end']) : '' ?>
+              <?php endif; ?>
+            </div>
+            <div style="font-size:.8rem;color:#374151;margin-top:4px;">💬 <?= htmlspecialchars($sl['reason']) ?></div>
+          </div>
+          <span style="background:<?= $slSt[1] ?>;color:<?= $slSt[2] ?>;border-radius:99px;padding:2px 10px;font-size:.72rem;font-weight:700;white-space:nowrap;flex-shrink:0;">
+            <?= $slSt[0] ?>
+          </span>
+        </div>
+      </div>
+      <?php endforeach; ?>
+    </div>
+    <?php else: ?>
+    <p class="text-sm text-gray-400 text-center py-2">ไม่มีใบลาเรียนจากนักเรียน</p>
+    <?php endif; ?>
+  </div>
+
 <footer class="text-center py-6 text-xs text-gray-400">
   © 7J English Center — Global Language Institute Online
 </footer>
-
-
-<!-- ── ใบลาจากนักเรียน ── -->
-<?php if (!empty($stuLeavesForMe)):
-$slDayTh = ['Monday'=>'จันทร์','Tuesday'=>'อังคาร','Wednesday'=>'พุธ','Thursday'=>'พฤหัสบดี','Friday'=>'ศุกร์','Saturday'=>'เสาร์','Sunday'=>'อาทิตย์'];
-?>
-<div class="bg-white rounded-2xl shadow-sm border border-blue-100 p-5 mb-5">
-  <div class="flex items-center gap-2 mb-3">
-    <span style="font-size:1.1rem;">🎓</span>
-    <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">ใบลาจากนักเรียน</h3>
-    <span style="background:#dbeafe;color:#1e40af;border-radius:99px;padding:1px 9px;font-size:.72rem;font-weight:700;margin-left:4px;">
-      <?= count($stuLeavesForMe) ?> รายการ
-    </span>
-  </div>
-  <div class="space-y-3">
-  <?php foreach ($stuLeavesForMe as $sl):
-    $slSt = match($sl['status']) {
-        'approved' => ['✅ อนุมัติแล้ว','#dcfce7','#166534'],
-        'rejected' => ['❌ ไม่อนุมัติ','#fee2e2','#991b1b'],
-        default    => ['⏳ รออนุมัติ','#fef9c3','#713f12'],
-    };
-  ?>
-  <div style="background:#f0f9ff;border-radius:10px;padding:10px 14px;border-left:3px solid #60a5fa;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
-      <div>
-        <div style="font-weight:700;color:#1f2937;font-size:.88rem;">
-          🎓 <?= htmlspecialchars($sl['stu_display'] ?? $sl['requester_name']) ?>
-          <span style="color:#9ca3af;font-size:.75rem;font-weight:400;margin-left:4px;"><?= htmlspecialchars($sl['stu_code'] ?? '') ?></span>
-        </div>
-        <div style="font-size:.8rem;color:#6b7280;margin-top:3px;">
-          <?php if ($sl['leave_day']): ?>
-            <span style="background:#eff6ff;color:#1e40af;border-radius:4px;padding:1px 6px;font-size:.75rem;font-weight:600;margin-right:4px;">
-              วัน<?= $slDayTh[$sl['leave_day']] ?? $sl['leave_day'] ?>
-            </span>
-          <?php endif; ?>
-          📅 <?= date('d/m/Y', strtotime($sl['leave_date'])) ?>
-          <?php if ($sl['leave_time_start']): ?>
-            · 🕐 <?= htmlspecialchars($sl['leave_time_start']) ?>
-            <?= $sl['leave_time_end'] ? '–'.htmlspecialchars($sl['leave_time_end']) : '' ?>
-          <?php endif; ?>
-        </div>
-        <div style="font-size:.8rem;color:#374151;margin-top:4px;">💬 <?= htmlspecialchars($sl['reason']) ?></div>
-      </div>
-      <span style="background:<?= $slSt[1] ?>;color:<?= $slSt[2] ?>;border-radius:99px;padding:2px 10px;font-size:.72rem;font-weight:700;white-space:nowrap;flex-shrink:0;">
-        <?= $slSt[0] ?>
-      </span>
-    </div>
-  </div>
-  <?php endforeach; ?>
-  </div>
-</div>
-<?php endif; ?>
 
 <!-- ── ประวัติใบลาของฉัน ── -->
 <?php if ($myLeaves): ?>
@@ -785,17 +813,41 @@ $slDayTh = ['Monday'=>'จันทร์','Tuesday'=>'อังคาร','Wedn
         </div>
       </div>
 
-      <!-- เวลาเริ่ม–สิ้นสุด -->
+      <!-- เวลาเริ่ม–สิ้นสุด (24H) -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
         <div>
           <label style="display:block;font-size:.82rem;font-weight:600;color:#374151;margin-bottom:5px;">🕐 เวลาเริ่ม</label>
-          <input type="time" name="leave_time_start" id="leave-ts"
-                 style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:9px;font-size:.88rem;box-sizing:border-box;outline:none;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <select id="leave-ts-h" onchange="updateLeaveTime('ts')"
+                    style="flex:1;padding:9px 6px;border:1px solid #d1d5db;border-radius:9px;font-size:.88rem;box-sizing:border-box;outline:none;background:#fff;text-align:center;">
+              <option value="">HH</option>
+              <?php for ($i=0;$i<24;$i++) printf('<option value="%02d">%02d</option>',$i,$i); ?>
+            </select>
+            <span style="font-weight:700;color:#6b7280;flex-shrink:0;">:</span>
+            <select id="leave-ts-m" onchange="updateLeaveTime('ts')"
+                    style="flex:1;padding:9px 6px;border:1px solid #d1d5db;border-radius:9px;font-size:.88rem;box-sizing:border-box;outline:none;background:#fff;text-align:center;">
+              <option value="">MM</option>
+              <?php for ($i=0;$i<60;$i+=5) printf('<option value="%02d">%02d</option>',$i,$i); ?>
+            </select>
+          </div>
+          <input type="hidden" name="leave_time_start" id="leave-ts">
         </div>
         <div>
           <label style="display:block;font-size:.82rem;font-weight:600;color:#374151;margin-bottom:5px;">🕐 เวลาสิ้นสุด</label>
-          <input type="time" name="leave_time_end" id="leave-te"
-                 style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:9px;font-size:.88rem;box-sizing:border-box;outline:none;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <select id="leave-te-h" onchange="updateLeaveTime('te')"
+                    style="flex:1;padding:9px 6px;border:1px solid #d1d5db;border-radius:9px;font-size:.88rem;box-sizing:border-box;outline:none;background:#fff;text-align:center;">
+              <option value="">HH</option>
+              <?php for ($i=0;$i<24;$i++) printf('<option value="%02d">%02d</option>',$i,$i); ?>
+            </select>
+            <span style="font-weight:700;color:#6b7280;flex-shrink:0;">:</span>
+            <select id="leave-te-m" onchange="updateLeaveTime('te')"
+                    style="flex:1;padding:9px 6px;border:1px solid #d1d5db;border-radius:9px;font-size:.88rem;box-sizing:border-box;outline:none;background:#fff;text-align:center;">
+              <option value="">MM</option>
+              <?php for ($i=0;$i<60;$i+=5) printf('<option value="%02d">%02d</option>',$i,$i); ?>
+            </select>
+          </div>
+          <input type="hidden" name="leave_time_end" id="leave-te">
         </div>
       </div>
 
@@ -859,11 +911,21 @@ function updateLeaveDay(val) {
     document.getElementById('leave-day').value = LEAVE_DAYS_EN[idx];
     document.getElementById('leave-day-lbl').textContent = 'วน' + LEAVE_DAYS_TH[idx];
 }
+function updateLeaveTime(id) {
+    var h = document.getElementById('leave-' + id + '-h').value;
+    var m = document.getElementById('leave-' + id + '-m').value;
+    document.getElementById('leave-' + id).value = (h !== '' && m !== '') ? h + ':' + m : '';
+}
 function openLeaveModal() {
     var d = new Date();
     var dateStr = d.toISOString().slice(0,10);
     document.getElementById('leave-date').value = dateStr;
     updateLeaveDay(dateStr);
+    ['ts','te'].forEach(function(id) {
+        document.getElementById('leave-'+id+'-h').value = '';
+        document.getElementById('leave-'+id+'-m').value = '';
+        document.getElementById('leave-'+id).value = '';
+    });
     document.querySelectorAll('.leave-stu-cb').forEach(function(cb){ cb.checked = false; });
     document.getElementById('leave-stu-search').value = '';
     document.getElementById('leave-stu-selected').textContent = '';

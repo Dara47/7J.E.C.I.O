@@ -75,6 +75,52 @@ $teacherSummary = $connection2->query("
     ORDER BY total_sessions DESC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
+// ─── Recalculate this_week/this_month/last_session จากเวลาจริง (อ้างอิงรายงานนักเรียน) ──
+$_trBkk     = new DateTimeZone('Asia/Bangkok');
+$_trNow     = new DateTime('now', $_trBkk);
+$_trNowHM   = $_trNow->format('H:i');
+$_trToday   = $_trNow->format('Y-m-d');
+$_trDayName = $_trNow->format('l');
+$_trWeekAgo = (clone $_trNow)->modify('-6 days')->format('Y-m-d');
+$_trYM      = substr($_trToday, 0, 7);
+
+$_schSlots = $connection2->query("
+    SELECT teacher_ref_id, schedule_type, day_of_week, specific_date, time_start
+    FROM sevenj_schedule
+    WHERE status IN ('active','completed') AND teacher_ref_id IS NOT NULL
+")->fetchAll(PDO::FETCH_ASSOC);
+
+$_teaStats = [];
+foreach ($_schSlots as $sl) {
+    $tid    = $sl['teacher_ref_id'];
+    $stype  = $sl['schedule_type'] ?? 'weekly';
+    $tstart = $sl['time_start']    ?? '';
+    $slotDate   = null;
+    $slotPassed = false;
+    if ($stype === 'one_time') {
+        $sdate = $sl['specific_date'] ?? '';
+        if ($sdate < $_trToday) { $slotPassed = true; $slotDate = $sdate; }
+        elseif ($sdate === $_trToday && $tstart !== '' && $_trNowHM >= $tstart) { $slotPassed = true; $slotDate = $sdate; }
+    } else {
+        $dow = ucfirst(strtolower($sl['day_of_week'] ?? ''));
+        if ($_trDayName === $dow && $tstart !== '' && $_trNowHM >= $tstart) { $slotPassed = true; $slotDate = $_trToday; }
+    }
+    if (!$slotPassed || !$slotDate) continue;
+    if (!isset($_teaStats[$tid])) $_teaStats[$tid] = ['week'=>0,'month'=>0,'last'=>null];
+    if ($slotDate >= $_trWeekAgo)          $_teaStats[$tid]['week']++;
+    if (substr($slotDate,0,7) === $_trYM)  $_teaStats[$tid]['month']++;
+    if (!$_teaStats[$tid]['last'] || $slotDate > $_teaStats[$tid]['last']) $_teaStats[$tid]['last'] = $slotDate;
+}
+foreach ($teacherSummary as &$_t) {
+    $tid = $_t['id'];
+    if (isset($_teaStats[$tid])) {
+        $_t['this_week']    = $_teaStats[$tid]['week'];
+        $_t['this_month']   = $_teaStats[$tid]['month'];
+        $_t['last_session'] = $_teaStats[$tid]['last'];
+    }
+}
+unset($_t);
+
 // ─── Filtered detail ──────────────────────────────────────────────────────────
 $rows = [];
 $byTeacher = [];

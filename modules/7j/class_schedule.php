@@ -164,8 +164,17 @@ foreach ($rows as $r) {
     // done = COUNT จริงจาก sevenj_class_completions ต่อนักเรียน (ไม่ใช่ accumulate per slot)
     $byStudent[$key]['done'] = (int)$r['actual_completed'];
 }
-// เพิ่ม 'slots' = active_slots สำหรับ calendar view
-foreach ($byStudent as &$v) { $v['slots'] = $v['active_slots']; }
+// Recalculate total/done จาก slot times (อ้างอิงเดียวกับตารางสอนครู)
+foreach ($byStudent as &$v) {
+    $allSlots = array_merge($v['active_slots'] ?? [], $v['old_slots'] ?? []);
+    $v['total'] = count($allSlots);
+    $v['done']  = 0;
+    foreach ($allSlots as $sl) {
+        if (csIsSlotReady($sl['day_of_week'] ?? '', $sl['time_start'] ?? '', $sl['schedule_type'] ?? 'weekly', $sl['specific_date'] ?? ''))
+            $v['done']++;
+    }
+    $v['slots'] = $v['active_slots'];
+}
 unset($v);
 uasort($byStudent, fn($a,$b) => strcmp($a['name'],$b['name']));
 
@@ -354,7 +363,7 @@ function initials2($name) {
 <div style="text-align:center;padding:3rem 1rem;color:#9ca3af;">
     <div style="font-size:2.5rem;margin-bottom:.5rem;">🗓</div>
     ไม่พบตารางเรียน<?= $selectedStudent?' ของ '.htmlspecialchars($selectedStudent):'' ?>
-    <br><a href="?q=/modules/7j/manage_schedule.php" style="color:#ea580c;font-size:.9rem;">+ เพิ่มตารางเรียน</a>
+    <br><a href="?q=/modules/7j/schedule_center.php&tab=schedule" style="color:#ea580c;font-size:.9rem;">+ เพิ่มตารางเรียน</a>
 </div>
 
 <?php elseif ($view === 'list'): ?>

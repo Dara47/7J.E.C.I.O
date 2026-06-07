@@ -7,11 +7,41 @@
 session_start();
 
 define('PORTAL_ROOT', dirname(__DIR__));
-define('DB_HOST', 'localhost');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_NAME', 'gibbon');
-define('ABSOLUTE_URL', 'http://localhost/MyNewShool');
+
+// อ่าน DB credentials จาก config.php ของ Gibbon
+// ค้นหา config.php หลาย path รองรับโครงสร้างเซิร์ฟเวอร์ที่ต่างกัน
+$_portalConfigCandidates = [
+    PORTAL_ROOT . '/config.php',                      // portal อยู่ใน Gibbon root
+    PORTAL_ROOT . '/MyNewShool/config.php',           // portal อยู่นอก Gibbon root
+    dirname(PORTAL_ROOT) . '/MyNewShool/config.php',  // อีกระดับ
+];
+$_portalConfigFound = false;
+foreach ($_portalConfigCandidates as $_portalConfigPath) {
+    if (file_exists($_portalConfigPath)) {
+        require_once $_portalConfigPath;  // defines $databaseServer, $databaseUsername, etc.
+        $_portalConfigFound = true;
+        break;
+    }
+}
+if (!$_portalConfigFound) {
+    http_response_code(500);
+    die('Portal config error: cannot find Gibbon config.php');
+}
+unset($_portalConfigCandidates, $_portalConfigPath, $_portalConfigFound);
+
+define('DB_HOST', $databaseServer   ?? 'localhost');
+define('DB_USER', $databaseUsername ?? 'root');
+define('DB_PASS', $databasePassword ?? '');
+define('DB_NAME', $databaseName     ?? 'gibbon');
+
+// สร้าง ABSOLUTE_URL แบบ dynamic (ไม่ hardcode localhost)
+define('ABSOLUTE_URL', (function () {
+    $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host  = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    // portal อยู่ที่ /portal/ — เอา parent directory
+    $base  = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])), '/');
+    return $proto . '://' . $host . dirname($base);
+})());
 
 function portal_db(): PDO {
     static $pdo = null;
