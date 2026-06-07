@@ -149,19 +149,6 @@ $todaySchedules = $connection2->query("
     ORDER BY s.time_start
 ")->fetchAll(PDO::FETCH_ASSOC);
 
-// Override todayLogs: อ้างอิงจาก schedule ที่เวลาผ่านแล้ว (แทน sevenj_class_completions ที่อาจว่าง)
-$todayLogs = [];
-foreach ($todaySchedules as $s) {
-    if ($nowTime > ($s['time_end'] ?? '')) {
-        $todayLogs[] = array_merge($s, [
-            'sch_note'               => $s['note'] ?? '',
-            'log_note'               => $s['note'] ?? '',
-            'log_date'               => $today,
-            'total_done_all_student' => 0,
-            'logged_today_student'   => 0,
-        ]);
-    }
-}
 
 $dayTH = ['Monday'=>'จันทร์','Tuesday'=>'อังคาร','Wednesday'=>'พุธ',
           'Thursday'=>'พฤหัสบดี','Friday'=>'ศุกร์','Saturday'=>'เสาร์','Sunday'=>'อาทิตย์'];
