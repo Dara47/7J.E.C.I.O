@@ -275,4 +275,16 @@ a[href="#top"] { color: #E8640A !important; }
 
 </ul>
 
+<script>
+(function(){
+  function resetMenus() {
+    if (typeof Alpine === 'undefined') return;
+    document.querySelectorAll('#header-menu li[x-data]').forEach(function(el) {
+      try { Alpine.destroyTree(el); } catch(e){}
+      Alpine.initTree(el);
+    });
+  }
+  document.addEventListener('htmx:afterSettle', resetMenus);
+})();
+</script>
 
