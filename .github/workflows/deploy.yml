@@ -18,7 +18,7 @@ jobs:
           username: deploy@7jenglish.com
           password: ${{ secrets.FTP_PASSWORD }}
           server-dir: /public_html/
-          state-name: .ftp-deploy-sync-state-v2.json
+          state-name: .ftp-deploy-sync-state-v3.json
           exclude: |
             **/.git*
             **/.git*/**
