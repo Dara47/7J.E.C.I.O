@@ -112,7 +112,7 @@ if ($action === 'add_entry') {
     for ($i = 0; $i < count($rnames); $i++) {
         $rn = trim($rnames[$i] ?? '');
         $rr = max(0, (float)($rrates[$i]  ?? 0));
-        $rc = max(0, (int)($rcnts[$i]     ?? 0));
+        $rc = max(0, (float)($rcnts[$i]     ?? 0));
         if ($rn) { $roles[] = ['role'=>$rn,'rate'=>$rr,'count'=>$rc]; $total += $rr*$rc; $totalSess += $rc; }
     }
     if ($tname) {
@@ -139,7 +139,7 @@ if ($action === 'add_entry') {
     for ($i = 0; $i < count($rnames); $i++) {
         $rn = trim($rnames[$i] ?? '');
         $rr = max(0, (float)($rrates[$i]  ?? 0));
-        $rc = max(0, (int)($rcnts[$i]     ?? 0));
+        $rc = max(0, (float)($rcnts[$i]     ?? 0));
         if ($rn) { $roles[] = ['role'=>$rn,'rate'=>$rr,'count'=>$rc]; $total += $rr*$rc; $totalSess += $rc; }
     }
     if ($pid && $tname) {
@@ -243,7 +243,7 @@ if ($action === 'add_entry') {
     for ($i = 0; $i < count($rnames); $i++) {
         $rn = trim($rnames[$i] ?? '');
         $rr = max(0, (float)($rrates[$i] ?? 0));
-        $rc = max(0, (int)($rcnts[$i]    ?? 0));
+        $rc = max(0, (float)($rcnts[$i]    ?? 0));
         if ($rn) { $roles[] = ['role'=>$rn,'rate'=>$rr,'count'=>$rc]; $total += $rr * $rc; }
     }
     if ($aname) {
@@ -268,7 +268,7 @@ if ($action === 'add_entry') {
     for ($i = 0; $i < count($rnames); $i++) {
         $rn = trim($rnames[$i] ?? '');
         $rr = max(0, (float)($rrates[$i] ?? 0));
-        $rc = max(0, (int)($rcnts[$i]    ?? 0));
+        $rc = max(0, (float)($rcnts[$i]    ?? 0));
         if ($rn) { $roles[] = ['role'=>$rn,'rate'=>$rr,'count'=>$rc]; $total += $rr*$rc; }
     }
     if ($pid && $aname) {
@@ -1204,7 +1204,7 @@ function teaAddRow(roleName, rate, count) {
     row.innerHTML =
         '<input type="text"   name="role_name[]"  placeholder="หน้าที่ เช่น คาบสอน" value="'+(roleName||'')+'" oninput="teaAddCalc()" required>'+
         '<input type="number" name="role_rate[]"  placeholder="ค่าจ้าง" min="0" step="0.01" value="'+(rate||'')+'" oninput="teaAddCalc()" style="text-align:right;">'+
-        '<input type="number" name="role_count[]" placeholder="จำนวน"   min="0" value="'+(count||1)+'" oninput="teaAddCalc()" style="text-align:center;">'+
+        '<input type="number" name="role_count[]" placeholder="จำนวน"   min="0" step="0.01" value="'+(count||1)+'" oninput="teaAddCalc()" style="text-align:center;">'+
         '<span class="adm-sub" id="tea-add-sub-'+idx+'">0 ฿</span>'+
         (idx>1 ? '<button type="button" onclick="document.getElementById(\'tea-add-row-'+idx+'\').remove();teaAddCalc();" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:.8rem;cursor:pointer;font-weight:700;">✕</button>'
                : '<span></span>');
@@ -1251,7 +1251,7 @@ function teaEditAddRow(roleName, rate, count) {
     row.innerHTML =
         '<input type="text"   name="role_name[]"  placeholder="หน้าที่ เช่น คาบสอน" value="'+(roleName||'')+'" oninput="teaEditCalc()" required>'+
         '<input type="number" name="role_rate[]"  placeholder="ค่าจ้าง" min="0" step="0.01" value="'+(rate||'')+'" oninput="teaEditCalc()" style="text-align:right;">'+
-        '<input type="number" name="role_count[]" placeholder="จำนวน"   min="0" value="'+(count||1)+'" oninput="teaEditCalc()" style="text-align:center;">'+
+        '<input type="number" name="role_count[]" placeholder="จำนวน"   min="0" step="0.01" value="'+(count||1)+'" oninput="teaEditCalc()" style="text-align:center;">'+
         '<span class="adm-sub" id="tea-edit-sub-'+idx+'">0 ฿</span>'+
         (idx>1 ? '<button type="button" onclick="document.getElementById(\'tea-edit-row-'+idx+'\').remove();teaEditCalc();" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:.8rem;cursor:pointer;font-weight:700;">✕</button>'
                : '<span></span>');
@@ -1343,7 +1343,7 @@ function admEditAddRow(roleName, rate, count) {
     row.innerHTML =
         '<input type="text"   name="role_name[]"  placeholder="หน้าที่ เช่น ผู้ดูแลระบบ" value="'+(roleName||'')+'" oninput="admEditCalc()" required>'+
         '<input type="number" name="role_rate[]"  placeholder="ค่าจ้าง" min="0" step="0.01" value="'+(rate||'')+'" oninput="admEditCalc()" style="text-align:right;">'+
-        '<input type="number" name="role_count[]" placeholder="จำนวน"   min="0" value="'+(count||1)+'" oninput="admEditCalc()" style="text-align:center;">'+
+        '<input type="number" name="role_count[]" placeholder="จำนวน"   min="0" step="0.01" value="'+(count||1)+'" oninput="admEditCalc()" style="text-align:center;">'+
         '<span class="adm-sub" id="adm-edit-sub-'+idx+'">0 ฿</span>'+
         (idx>1 ? '<button type="button" onclick="document.getElementById(\'adm-edit-row-'+idx+'\').remove();admEditCalc();" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:.8rem;cursor:pointer;font-weight:700;">✕</button>'
                : '<span></span>');
@@ -1389,7 +1389,7 @@ function admAddRow(roleName, rate, count) {
     row.innerHTML =
         '<input type="text"   name="role_name[]"  placeholder="หน้าที่ เช่น ผู้ดูแลระบบ" value="'+(roleName||'')+'" oninput="admCalcTotal()" required>' +
         '<input type="number" name="role_rate[]"  placeholder="ค่าจ้าง" min="0" step="0.01" value="'+(rate||'')+'" oninput="admCalcTotal()" style="text-align:right;">' +
-        '<input type="number" name="role_count[]" placeholder="จำนวน"   min="0" value="'+(count||1)+'" oninput="admCalcTotal()" style="text-align:center;">' +
+        '<input type="number" name="role_count[]" placeholder="จำนวน"   min="0" step="0.01" value="'+(count||1)+'" oninput="admCalcTotal()" style="text-align:center;">' +
         '<span class="adm-sub" id="adm-sub-'+idx+'">0 ฿</span>' +
         (idx > 1 ? '<button type="button" onclick="admRemoveRow('+idx+')" style="padding:4px 8px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;font-size:.8rem;cursor:pointer;font-weight:700;">✕</button>'
                  : '<span></span>');
