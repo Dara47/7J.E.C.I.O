@@ -276,12 +276,13 @@ foreach ($ccAvRows as $av) {
             $endM  = ccEndMins($av['end_time'] ?? '00:00');
             $isExp = $dt < $cc_today || ($dt === $cc_today && $cc_nowMins > $endM);
             if ($isExp) continue; // ช่วงเวลาผ่านไปแล้ว — ไม่แสดง
-            $bkKey = $tid3.'|'.$dayL.'|'.ccF24($av['start_time']).'|'.ccF24($av['end_time']);
+            $bkKey   = $tid3.'|'.$dayL.'|'.ccF24($av['start_time']).'|'.ccF24($av['end_time']);
+            $bkKeyDt = $tid3.'|__d__'.$dt.'|'.ccF24($av['start_time']).'|'.ccF24($av['end_time']);
             $ccAllFlat[] = [
                 'avid'=>$av['id'], 'tid'=>$tid3, 'tname'=>$av['tname']??'', 'tcode'=>$av['tcode']??'',
                 'ts'=>ccF24($av['start_time']), 'te'=>ccF24($av['end_time']),
                 'note'=>$av['note']??'', 'avtype'=>$av['type'], 'day'=>$dayL, 'date'=>$dt,
-                'exp'=>false, 'bookings'=>$ccBkMap[$bkKey] ?? [],
+                'exp'=>false, 'bookings'=>array_merge($ccBkMap[$bkKey] ?? [], $ccBkMap[$bkKeyDt] ?? []),
             ];
         }
     } else {
