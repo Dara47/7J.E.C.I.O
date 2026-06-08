@@ -232,6 +232,25 @@ if ($cc_act === 'add_avail') {
         }
         $cc_msg = 'success|ลบการจองสำเร็จ';
     }
+
+} elseif ($cc_act === 'del_all_free') {
+    $tidWhere = $cc_fTid ? ' AND a.teacher_id = ?' : '';
+    $params   = $cc_fTid ? [$cc_fTid] : [];
+    $stmt = $connection2->prepare(
+        "DELETE a FROM sevenj_teacher_availability a
+         LEFT JOIN sevenj_schedule s ON
+             s.teacher_ref_id = a.teacher_id
+             AND s.time_start = a.start_time
+             AND s.time_end   = a.end_time
+             AND s.status     = 'active'
+             AND (
+                 (a.type = 'specific_date' AND s.schedule_type = 'one_time' AND s.specific_date = a.specific_date)
+                 OR (a.type = 'weekly' AND s.schedule_type = 'weekly' AND s.day_of_week = a.day)
+             )
+         WHERE s.id IS NULL" . $tidWhere
+    );
+    $stmt->execute($params);
+    $cc_msg = 'success|ลบช่วงว่างที่ไม่มีนักเรียน ' . $stmt->rowCount() . ' รายการสำเร็จ';
 }
 
 // ── Shared data fetch ──────────────────────────────────────────────────
@@ -507,6 +526,12 @@ foreach ($ccTeachers as $t) { if ($t['id'] === $cc_fTid) { $cc_fTname = $t['disp
   <span class="cc-stat cc-s-busy">จอง: <?= $ccTotBk ?></span>
   <?php if ($cc_pages > 1): ?>
   <span class="cc-stat" style="background:#fef3c7;color:#92400e;">หน้า <?= $cc_page ?>/<?= $cc_pages ?> &middot; แถวที่ <?= $cc_pgStart+1 ?>–<?= $cc_pgEnd ?></span>
+  <?php endif; ?>
+  <?php if ($ccTotFr > 0): ?>
+  <button class="cc-stat" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;cursor:pointer;font-weight:700;"
+          onclick="ccDelAllFree()" type="button">
+    🗑️ ลบช่วงว่างทั้งหมด
+  </button>
   <?php endif; ?>
 </div>
 
@@ -807,6 +832,38 @@ foreach ($ccTeachers as $t) { if ($t['id'] === $cc_fTid) { $cc_fTname = $t['disp
     <div class="cc-mfoot">
       <button type="button" class="cc-btn-cancel" onclick="ccModal('cc-modal-del',0)">ยกเลิก</button>
       <button type="submit" class="cc-btn-submit cc-btn-danger">ยืนยันลบ</button>
+    </div>
+  </form>
+</div>
+</div>
+
+<!-- ══ Modal: Bulk Delete Free Slots ══════════════════════════════════ -->
+<div id="cc-modal-bulk-del" class="cc-mbg">
+<div class="cc-mdl" style="max-width:420px">
+  <div class="cc-mhdr">
+    <h3 style="color:#dc2626;">⚠️ ลบช่วงว่างทั้งหมด</h3>
+    <button class="cc-mclose" onclick="ccModal('cc-modal-bulk-del',0)">✕</button>
+  </div>
+  <form method="post" id="cc-form-bulk-del">
+    <div class="cc-mbody">
+      <input type="hidden" name="q"      value="<?= htmlspecialchars($CC_URL) ?>">
+      <input type="hidden" name="year"   value="<?= $cc_year ?>">
+      <input type="hidden" name="month"  value="<?= $cc_month ?>">
+      <?php if ($cc_fTid): ?><input type="hidden" name="tid" value="<?= htmlspecialchars($cc_fTid) ?>"><?php endif; ?>
+      <input type="hidden" name="cc_act" value="del_all_free">
+      <p style="font-size:.88rem;color:#374151;margin:4px 0 8px;line-height:1.7;">
+        จะลบ <strong style="color:#dc2626;font-size:1rem;"><?= $ccTotFr ?></strong> ช่วงว่าง<?= $cc_fTid ? ' ของครูที่กรองอยู่' : 'ทุกครู' ?>ที่ยังไม่มีนักเรียนจองออกทั้งหมด
+        <?php if (!$cc_fTid): ?>
+        <br><span style="color:#6b7280;font-size:.78rem;">ครอบคลุมทุกเดือน ทุกครู</span>
+        <?php endif; ?>
+      </p>
+      <p style="font-size:.8rem;color:#166534;background:#dcfce7;border-radius:6px;padding:6px 10px;margin:0;">
+        ✅ ช่วงเวลาที่มีนักเรียนจองอยู่แล้ว<u>จะไม่ถูกลบ</u>
+      </p>
+    </div>
+    <div class="cc-mfoot">
+      <button type="button" class="cc-btn-cancel" onclick="ccModal('cc-modal-bulk-del',0)">ยกเลิก</button>
+      <button type="submit" class="cc-btn-submit cc-btn-danger">ยืนยัน ลบทั้งหมด</button>
     </div>
   </form>
 </div>
@@ -1223,5 +1280,8 @@ function ccDelBk(bid) {
     document.getElementById('cc-del-bid').value  = bid;
     document.getElementById('cc-del-msg').textContent = 'ลบการจองนี้?';
     ccModal('cc-modal-del', 1);
+}
+function ccDelAllFree() {
+    ccModal('cc-modal-bulk-del', 1);
 }
 </script>

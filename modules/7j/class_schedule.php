@@ -118,7 +118,14 @@ $stmtRows = $connection2->prepare("
     LEFT JOIN sevenj_students st ON st.id = s.student_id
     LEFT JOIN sevenj_teachers t  ON t.id  = s.teacher_ref_id
     $whereSQL
-    ORDER BY disp_student, s.day_of_week, s.time_start
+    ORDER BY
+      disp_student,
+      CASE WHEN s.schedule_type = 'one_time' THEN s.specific_date ELSE '0000-00-00' END,
+      CASE s.day_of_week
+        WHEN 'Sunday'    THEN 0 WHEN 'Monday'   THEN 1 WHEN 'Tuesday'  THEN 2
+        WHEN 'Wednesday' THEN 3 WHEN 'Thursday' THEN 4 WHEN 'Friday'   THEN 5
+        WHEN 'Saturday'  THEN 6 ELSE 7 END,
+      s.time_start
 ");
 $stmtRows->execute($bindP);
 $rows = $stmtRows->fetchAll(PDO::FETCH_ASSOC);
@@ -235,14 +242,8 @@ $csTotalH = csToPx($CS_END, $CS_START, $CS_PX_HOUR);
 $csNow    = (new DateTime('now', new DateTimeZone('Asia/Bangkok')))->format('H:i');
 $csNowPx  = ($csNow>=$CS_START && $csNow<=$CS_END) ? csToPx($csNow,$CS_START,$CS_PX_HOUR) : -1;
 
-// เวลาเก็บแบบ 24h จริง — แปลงเป็น 12h AM/PM
 function fmtTimePM(string $t): string {
-    if ($t === '') return '';
-    [$h, $m] = array_pad(explode(':', $t), 2, '00');
-    $h = (int)$h;
-    $suffix = $h >= 12 ? 'PM' : 'AM';
-    $h12    = $h % 12 ?: 12;
-    return $h12 . ':' . $m . ' ' . $suffix;
+    return $t !== '' ? substr($t, 0, 5) : '';
 }
 
 // ─── Thailand time helper ─────────────────────────────────────────────────────
@@ -667,10 +668,7 @@ var csAvailData = <?= json_encode($csAvailByTeacher) ?>;
 var CS_DAYS_TH  = {Sunday:'อาทิตย์',Monday:'จันทร์',Tuesday:'อังคาร',Wednesday:'พุธ',Thursday:'พฤหัสบดี',Friday:'ศุกร์',Saturday:'เสาร์'};
 
 function fmt24AmPmCS(t) {
-    if (!t) return t;
-    var p=t.split(':'), h=parseInt(p[0]), m=p[1]||'00';
-    var s=h>=12?'PM':'AM'; h=h%12||12;
-    return h+':'+m+' '+s;
+    return t ? t.substring(0, 5) : '';
 }
 function csOnTeacher(sel) {
     csShowAvail(sel.value);
